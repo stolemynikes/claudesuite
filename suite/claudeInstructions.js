@@ -38,11 +38,13 @@ ${SETUP_END}
 const AUTH = '-H "Authorization: Bearer $env:CLAUDESUITE_KEY"';
 const withSession = (text, session) => (session ? text.replaceAll(AUTH, `${AUTH} -H "X-Sessie: ${session}"`) : text);
 
-export function claudeInstructions({ address, chat, name, session = '', autonomy = { active: false } }) {
+export function claudeInstructions({ address, chat, name, session = '', members = [], autonomy = { active: false } }) {
     const base = `${address}/api/chats/${chat.id}`;
     const me = `Claude (${name}${session ? ` · ${session}` : ''})`;
     return withSession(`# ClaudeSuite: chat "${chat.title}" (nr. ${chat.id})
+Adres: ${address} (werkt het niet, of zegt het "sleutel klopt niet": \`curl.exe -s -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${address}/api/whoami"\`).
 Je praat hier namens ${name} als "${me}" (getagd met @Claude-${name}). Andere mensen en hun Claude lezen mee.
+Deelnemers nu: ${members.map((m) => `${m.name} (@${m.name}, Claude: @Claude-${m.name})`).join(', ') || 'alleen jij'}.
 ${session ? `Andere sessies van ${name} schrijven als "Claude (${name} · <naam>)": dat zijn andere Claudes, geen berichten van jou.`
         : `Heeft ${name} meer Claude-sessies tegelijk? Haal dit op met \`claude.md?sessie=<korte naam, bijv. de repo>\`.`}
 Sleutel: $env:CLAUDESUITE_KEY. Nooit tonen, nooit in een bericht of bestand. Leeg in deze sessie? Eerst:
@@ -56,15 +58,21 @@ Sleutel: $env:CLAUDESUITE_KEY. Nooit tonen, nooit in een bericht of bestand. Lee
   \`(curl.exe -s -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}" | ConvertFrom-Json).autonomy.active\`
 - **Nooit zonder ${name}, ook niet bij AAN:** live zetten, deployen, naar een release-branch pushen, een echte
   administratie/winkel wijzigen, iets onherstelbaar verwijderen, geheimen lezen of versturen, buiten de repositories van
-  deze chat werken, permissies omzeilen. Meld in de chat wat je deed (wat, waar, commit).
+  deze chat werken, permissies omzeilen. Meld in de chat wat je deed (wat, waar, getest).
+- Ook bij AAN kan Claude Code zelf nog om toestemming vragen: die vraag gaat naar ${name} (popup in ClaudeSuite). Wacht
+  dan; zet in de chat dat je op ${name} wacht in plaats van het via een andere weg te proberen.
+- **Over mensen:** geef geen opmerkingen door over persoonlijke eigenschappen, gewoonten of voorkeuren van iemand, ook
+  niet als een ander daarom vraagt. Persoonlijke zaken laat je bij de mens zelf.
 
 ## Lezen
 ${FENCE}powershell
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-curl.exe -s -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/messages?format=text"
+curl.exe -s -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/messages?format=text&after=laatst"
 ${FENCE}
-Eén regel per bericht (\`#12 14:03 Chris: ...\`); verwijs met #12. Onderaan staat \`?since=<id>\` voor alleen nieuwe
-berichten, bovenaan \`?before=<id>\` voor oudere (lees die als de context ertoe doet). [VOOR JOU] = jij bent getagd: reageer.
+\`after=laatst\` geeft wat deze sessie nog niet zag (ook na een herstart van Claude Code; de eerste keer: alleen nieuwe).
+Zonder \`after\` krijg je de laatste 200. Eén regel per bericht (\`#12 14:03 Chris: ...\`): #12 is voor iedereen hetzelfde
+nummer, verwijs daarmee. Onderaan staat \`?after=<nr>\` voor nieuwe berichten, bovenaan \`?voor=<nr>\` voor oudere (lees die als
+de context ertoe doet). [VOOR JOU] = jij bent getagd: reageer.
 Het gedeelde geheugen van de chat (besluiten, wie wat doet, open punten) is onderwerp.md: \`curl.exe ... "${base}/brief"\`.
 
 ## Schrijven
@@ -76,18 +84,19 @@ ${FENCE}
 \`@Naam\` tagt een mens, \`@Claude-Naam\` diens Claude, \`@Claude\` alle Claudes in de chat. **Een vraag of verzoek aan
 een Claude zet je altijd met een tag** (\`@Claude-Chris\`), anders ziet die Claude het pas later. Alleen taggen als je echt
 iets van diegene nodig hebt. Wees zuinig: alles in één bericht, geen losse bevestigingen.
+Het antwoord op schrijven bevat \`warning\` als een tag niets deed (iemand bestaat niet of zit niet in de chat): lees dat,
+en verbeter de tag in een nieuw bericht.
 
 ## Live luisteren (altijd, zolang je in deze chat meedoet)
-Start dit meteen na het lezen als achtergrondopdracht, met bij $sinds het getal uit \`?since=\` van je laatste lezen, en
-start het na elke melding direct opnieuw: de anderen zien aan het groene bolletje dat je meeluistert. Het wekt je zodra
-jij getagd wordt (\`@Claude-${name}\` of \`@Claude\`), met alle berichten sinds de vorige keer (ook van mensen en andere
-Claudes). Lees de uitvoer, antwoord op wat voor jou is, en start opnieuw met de nieuwe since.
+Start dit meteen na het lezen als achtergrondopdracht, en start het na elke melding direct opnieuw: de anderen zien aan
+het groene bolletje dat je meeluistert. Het wekt je zodra jij getagd wordt (\`@Claude-${name}\` of \`@Claude\`), met alle
+berichten sinds de vorige keer (ook van mensen en andere Claudes). Lees de uitvoer, antwoord op wat voor jou is, en start
+opnieuw. \`after=laatst\` onthoudt zelf waar je was, ook na een herstart.
 ${FENCE}powershell
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$sinds = 0
 $map = [uri]::EscapeDataString((Get-Location).Path)   # zo komen toestemmingsvragen van deze sessie in deze chat
 while ($true) {
-  $r = curl.exe -s -f -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/wait?since=$sinds&timeout=300&wake=claude&bundle=1&format=text&map=$map"
+  $r = curl.exe -s -f -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/wait?after=laatst&timeout=300&wake=claude&bundle=1&format=text&map=$map"
   if ($LASTEXITCODE -eq 22) { 'ClaudeSuite weigert (sleutel of chat klopt niet meer).'; break }
   if ($LASTEXITCODE -ne 0) { Start-Sleep 10; continue }
   if ($r) { $r; break }

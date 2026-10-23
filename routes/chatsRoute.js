@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { apiGuard, humanOnly, sessionName } from '../suite/guard.js';
 import { claudeDetails, claudeHook, claudeInstructions, claudeSetup } from '../suite/claudeInstructions.js';
 import { createPermissions, ANSWER_MINUTES } from '../suite/permissions.js';
+import { TAILSCALE_ADDRESS } from '../config.js';
 
 // The chats. People and their Claude (with the person's Claude key) only see the chats they are a member of.
 //
@@ -39,11 +40,12 @@ const INLINE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
 // Messages as plain text for a Claude (?format=text): far fewer tokens than JSON, and still easy to read.
 // "me" is the person whose Claude reads it: messages that tag that Claude get [VOOR JOU].
+// Only the chat's own message numbers (#12) appear, the same for everyone: ?after=12 and ?voor=12 page with them.
 const DAY = new Intl.DateTimeFormat('nl-NL', { timeZone: 'Europe/Amsterdam', weekday: 'long', day: 'numeric', month: 'long' });
 const TIME = new Intl.DateTimeFormat('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit' });
 export function asText(messages, { chat, me, next }) {
     const lines = [`# Chat ${chat.id} "${chat.title}": ${messages.length} bericht${messages.length === 1 ? '' : 'en'}`];
-    if (messages[0]?.number > 1) lines.push(`(oudere berichten: ?before=${messages[0].id})`);
+    if (messages[0]?.number > 1) lines.push(`(oudere berichten: ?voor=${messages[0].number})`);
     let day = '';
     for (const m of messages) {
         const at = new Date(m.created);
@@ -53,7 +55,7 @@ export function asText(messages, { chat, me, next }) {
         const [first, ...rest] = `${m.text}${file}`.trim().split('\n');
         lines.push(`#${m.number} ${TIME.format(at)} ${m.isEvent ? `· ${m.sender}` : `${m.sender}:`}${forMe} ${first}`.trimEnd(), ...rest.map((line) => `    ${line}`));
     }
-    if (next) lines.push('', `(nieuwe berichten: ?since=${next})`);
+    if (next) lines.push('', `(nieuwe berichten: ?after=${next})`);
     return `${lines.join('\n')}\n`;
 }
 
@@ -65,7 +67,7 @@ const safeName = (name) => String(name || '').split(/[\\/]/).pop().replace(/[\u0
 export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     const router = express.Router();
     const guard = apiGuard({ store, sessions });
-    router.use(['/chats', '/chats-changed', '/files', '/claude-setup.md', '/permissions', '/claude-hook.ps1'], guard);
+    router.use(['/chats', '/chats-changed', '/files', '/claude-setup.md', '/permissions', '/claude-hook.ps1', '/whoami'], guard);
     const permissions = createPermissions();
     const json = express.json({ limit: '300kb' });
     const text = express.text({ limit: '300kb', type: 'text/plain' });
@@ -132,6 +134,12 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         entry.version += 1;
         waiters.notify(chatId, { all: false });
     }
+
+    // Quick check for a Claude: does my key work, as whom do I write, and which addresses reach ClaudeSuite
+    router.get('/whoami', (req, res) => res.json({
+        name: req.user.name, writesAs: req.sender, isClaude: req.isClaude,
+        address: `${req.protocol}://${req.get('host')}`, tailscaleAddress: TAILSCALE_ADDRESS,
+    }));
 
     router.get('/chats', (req, res) => res.json({ chats: store.chatsFor(req.user.id, { archived: req.query.archived === '1' }), latest: store.latestFor(req.user.id) }));
 
@@ -219,18 +227,42 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         res.json({ members: store.members(req.chat.id) });
     });
 
+    // Where a Claude reads from, in the chat's own numbers: ?after=12 (after #12), ?after=laatst (where this Claude
+    // session stopped last time, so a restarted session picks up there), ?voor=12 (older, before #12).
+    // The page itself uses the internal ids (?since= / ?before=).
+    const readUpTo = new Map(); // "<chatId>|<userId>|<sender>" -> the last number this Claude session was given (only in memory)
+    function position(req) {
+        let after = req.query.after;
+        const key = `${req.chat.id}|${req.user.id}|${req.sender}`;
+        // the first time: from now on (and remember that, so what comes next is not missed)
+        if (after === 'laatst' && !readUpTo.has(key) && req.isClaude) readUpTo.set(key, store.lastNumber(req.chat.id));
+        if (after === 'laatst') after = readUpTo.get(key) ?? store.lastNumber(req.chat.id);
+        return {
+            byNumber: after !== undefined,
+            since: after !== undefined ? store.idAtNumber(req.chat.id, after) : Number(req.query.since) || 0,
+            before: req.query.voor !== undefined ? store.idAtNumber(req.chat.id, Number(req.query.voor) - 1) + 1 : req.query.before,
+        };
+    }
+    const remember = (req, messages) => {
+        const key = `${req.chat.id}|${req.user.id}|${req.sender}`;
+        if (req.isClaude && messages.length) readUpTo.set(key, Math.max(readUpTo.get(key) || 0, ...messages.map((m) => m.number)));
+    };
+
     router.get('/chats/:id/messages', (req, res) => {
-        const messages = store.messages(req.chat.id, { since: req.query.since, before: req.query.before, limit: req.query.limit });
+        const { since, before } = position(req);
+        const messages = store.messages(req.chat.id, { since, before, limit: req.query.limit });
+        if (!before) remember(req, messages);
         if (req.query.format !== 'text') return res.json({ messages });
-        res.type('text/plain; charset=utf-8').send(asText(messages, { chat: req.chat, me: req.user.name, next: req.query.before ? 0 : messages.at(-1)?.id || req.query.since }));
+        res.type('text/plain; charset=utf-8').send(asText(messages, { chat: req.chat, me: req.user.name, next: before ? 0 : messages.at(-1)?.number || store.lastNumber(req.chat.id) }));
     });
 
     router.post('/chats/:id/messages', open, json, text, (req, res) => {
         const body = typeof req.body === 'string' ? req.body : req.body?.text;
         const message = clean(body, MAX_TEXT);
         if (!message) return bad(res, 'Leeg bericht.');
-        const { tags, outside } = findTags(message, req.chat.id);
-        res.json({ message: post(req, message, null, false, tags), notInChat: outside });
+        const { tags, outside, unknown } = findTags(message, req.chat.id);
+        const saved = post(req, message, null, false, tags);
+        res.json({ message: saved, notInChat: outside, unknownTags: unknown, ...tagWarning(req.chat.id, outside, unknown) });
     });
 
     // The person (not their Claude) has seen the chat up to this message
@@ -240,7 +272,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     });
 
     router.get('/chats/:id/wait', async (req, res) => {
-        const since = Number(req.query.since) || 0;
+        const { since, byNumber } = position(req);
         // Without tv the asker does not care about typing (a Claude listener): only messages wake it up
         const tv = req.query.tv === undefined ? null : Number(req.query.tv) || 0;
         const until = Date.now() + Math.min(Math.max(Number(req.query.timeout) || 60, 1), 300) * 1000;
@@ -264,7 +296,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
             if (req.query.map) permissions.connect({ user: req.user, cwd: req.query.map, chatId: req.chat.id, sender: req.sender });
         }
         try {
-            while (!wakes(messages) && since > 0 && (tv === null || typingNow(req.chat.id).tv === tv) && Date.now() < until && !res.destroyed) {
+            while (!wakes(messages) && (since > 0 || byNumber) && (tv === null || typingNow(req.chat.id).tv === tv) && Date.now() < until && !res.destroyed) {
                 await waiters.wait(req.chat.id, (until - Date.now()) / 1000, res);
                 messages = store.messages(req.chat.id, { since, limit });
             }
@@ -278,10 +310,11 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         // Nothing woke the listener: send nothing, so the messages so far come along next time
         if (!wakes(messages)) messages = [];
         if (res.writableEnded || res.destroyed) return;
+        remember(req, messages);
         if (req.query.format !== 'text') return res.json({ messages, ...typingNow(req.chat.id) });
         // A Claude knows what it wrote itself
         const others = messages.filter((m) => m.sender !== mine);
-        res.type('text/plain; charset=utf-8').send(others.length ? asText(others, { chat: req.chat, me: req.user.name, next: messages.at(-1).id }) : '');
+        res.type('text/plain; charset=utf-8').send(others.length ? asText(others, { chat: req.chat, me: req.user.name, next: messages.at(-1).number }) : '');
     });
 
     router.post('/chats/:id/typing', open, json, (req, res) => {
@@ -322,8 +355,8 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
             const type = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase().slice(0, 100) || 'application/octet-stream';
             const fileId = store.addFile({ chatId: req.chat.id, userId: req.user.id, name, type, size, stored });
             const caption = clean(req.query.text, MAX_TEXT);
-            const { tags, outside } = findTags(caption, req.chat.id);
-            res.json({ message: post(req, caption, fileId, false, tags), notInChat: outside });
+            const { tags, outside, unknown } = findTags(caption, req.chat.id);
+            res.json({ message: post(req, caption, fileId, false, tags), notInChat: outside, unknownTags: unknown, ...tagWarning(req.chat.id, outside, unknown) });
         });
         req.pipe(out);
     });
@@ -374,7 +407,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         if (session === null) return bad(res, 'Sessienaam: 1 tot 24 tekens, alleen letters, cijfers, spatie, punt, - of _.');
         const address = `${req.protocol}://${req.get('host')}`;
         if (req.query.deel === 'meer') return res.type('text/markdown; charset=utf-8').send(claudeDetails({ address, chat: req.chat, session }));
-        res.type('text/markdown; charset=utf-8').send(claudeInstructions({ address, chat: req.chat, name: req.user.name, session, autonomy: store.autonomy(req.chat.id) }));
+        res.type('text/markdown; charset=utf-8').send(claudeInstructions({ address, chat: req.chat, name: req.user.name, session, members: store.members(req.chat.id), autonomy: store.autonomy(req.chat.id) }));
     });
 
     // ---------- permission questions of Claude Code, answered in the app (see suite/permissions.js) ----------
@@ -501,15 +534,21 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     function findTags(text, chatId) {
         const lower = String(text).toLowerCase();
         // the name must end there: "@Pe" is not a tag in "@Pepijn"
+        // ...but a full stop at the end of a sentence ("@Chris.") is not part of the name
+        const endsAt = (pos) => {
+            const next = lower[pos] || '';
+            if (next === '.') return !/[\p{L}\p{N}_-]/u.test(lower[pos + 1] || '');
+            return !/[\p{L}\p{N}_-]/u.test(next);
+        };
         const has = (token) => {
             for (let i = lower.indexOf(token); i !== -1; i = lower.indexOf(token, i + 1)) {
-                if (!/[\p{L}\p{N}_.-]/u.test(lower[i + token.length] || '')) return true;
+                if (endsAt(i + token.length)) return true;
             }
             return false;
         };
         const tags = [];
         const outside = [];
-        if (!lower.includes('@')) return { tags, outside };
+        if (!lower.includes('@')) return { tags, outside, unknown: [] };
         for (const person of store.users()) {
             const name = person.name.toLowerCase();
             const asPerson = has(`@${name}`);
@@ -528,7 +567,24 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
                 if (!tags.some((t) => t.claude && t.userId === member.id)) tags.push({ userId: member.id, claude: true });
             }
         }
-        return { tags, outside };
+        // An @ that is no person, no Claude and not @Claude: a typo or someone who is gone. It comes back, so the
+        // writer hears it instead of the tag silently doing nothing. (Not in e-mail addresses: the @ must start a word.)
+        const names = store.users().map((u) => u.name.toLowerCase());
+        const known = ['claude', ...names, ...names.map((n) => `claude-${n}`)];
+        const unknown = [];
+        for (const match of String(text).matchAll(/(?<![\p{L}\p{N}_.@-])@([\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*)/gu)) {
+            const at = match.index;
+            const isKnown = known.some((k) => lower.startsWith(`@${k}`, at) && endsAt(at + k.length + 1));
+            if (!isKnown && !unknown.includes(match[1])) unknown.push(match[1]);
+        }
+        return { tags, outside, unknown };
+    }
+    // For the writer (mostly a Claude): which tags did nothing, and how the people in this chat are tagged
+    function tagWarning(chatId, outside, unknown) {
+        if (!outside.length && !unknown.length) return {};
+        const members = store.members(chatId).map((m) => `@${m.name} / @Claude-${m.name}`).join(', ');
+        const parts = [unknown.length ? `${unknown.map((u) => `@${u}`).join(', ')} bestaat niet` : '', outside.length ? `${outside.join(', ')} zit${outside.length === 1 ? '' : 'ten'} niet in deze chat` : ''].filter(Boolean);
+        return { warning: `Let op: ${parts.join('; ')}, dus die tag doet niets. Taggen in deze chat: ${members}, of @Claude voor alle Claudes.` };
     }
 
     return router;

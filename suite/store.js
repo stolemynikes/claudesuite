@@ -273,6 +273,10 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
             return withTags(all(`${MESSAGE_SQL} WHERE m.chat_id = ? AND m.id < ? ORDER BY m.id DESC LIMIT ?`, Number(chatId), below, max).map(messageRow).reverse());
         },
 
+        // The chat's own numbers (#12) to the internal id: the last message with at most that number (0 = none)
+        idAtNumber: (chatId, number) => one('SELECT MAX(id) AS id FROM messages WHERE chat_id = ? AND seq <= ?', Number(chatId), Number(number) || 0)?.id || 0,
+        lastNumber: (chatId) => one('SELECT MAX(seq) AS n FROM messages WHERE chat_id = ?', Number(chatId))?.n || 0,
+
         // ---------- files ----------
         addFile({ chatId, userId, name, type, size, stored }) {
             const info = run('INSERT INTO files (chat_id, user_id, name, type, size, stored, created) VALUES (?, ?, ?, ?, ?, ?, ?)', Number(chatId), userId, name, type, size, stored, now());

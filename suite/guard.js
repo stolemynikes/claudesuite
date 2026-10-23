@@ -41,7 +41,7 @@ export function apiGuard({ store, sessions }) {
         const bearer = /^Bearer (csk_[A-Za-z0-9_-]{20,})$/.exec(req.get('authorization') || '');
         if (bearer) {
             const user = store.userByClaudeKey(bearer[1]);
-            if (!user) return res.status(401).json({ message: 'Deze Claude-sleutel klopt niet (meer). Maak een nieuwe op je profiel.' });
+            if (!user) return res.status(401).json({ message: `Deze Claude-sleutel klopt niet (meer) voor ${req.protocol}://${req.get('host')}. Is er een nieuwe gemaakt? Open ClaudeSuite, je naam rechtsboven, "Sleutel tonen", en plak die opdracht opnieuw.` });
             // One person can run several Claude Code sessions: each names itself with "X-Sessie: Kasper" and then
             // writes as "Claude (Pepijn · Kasper)". Without it: "Claude (Pepijn)".
             const session = sessionName(req.get('x-sessie'));

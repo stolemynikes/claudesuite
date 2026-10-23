@@ -487,13 +487,16 @@ function composer() {
     }
     // Tagged someone who is not in this chat: offer to add them
     const notice = h('div', { class: 'notice', role: 'status', hidden: true });
-    function offerToAdd(names) {
-        notice.hidden = !names.length;
-        notice.replaceChildren(...(names.length ? [h('span', {}, `${names.join(', ')} ${names.length === 1 ? 'zit' : 'zitten'} niet in deze chat en ${names.length === 1 ? 'ziet' : 'zien'} de tag dus niet.`),
+    // unknown: tags that are nobody (a typo, or someone who is gone)
+    function offerToAdd(names, unknown = []) {
+        notice.hidden = !names.length && !unknown.length;
+        notice.replaceChildren(...(names.length || unknown.length ? [
+            unknown.length ? h('span', {}, `${unknown.map((u) => `@${u}`).join(', ')} bestaat niet: die tag doet niets.`) : null,
+            names.length ? h('span', {}, `${names.join(', ')} ${names.length === 1 ? 'zit' : 'zitten'} niet in deze chat en ${names.length === 1 ? 'ziet' : 'zien'} de tag dus niet.`) : null,
             ...names.map((name) => action(`${name} toevoegen`, async () => {
                 const { members } = await api(`/api/chats/${state.chatId}/members`, { method: 'POST', body: { name } });
                 state.members = members;
-                offerToAdd(names.filter((n) => n !== name));
+                offerToAdd(names.filter((n) => n !== name), unknown);
             }, { kind: 'compact primary' })),
             h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Sluiten', onclick: () => offerToAdd([]) }, icon('x'))] : []));
     }
@@ -527,8 +530,8 @@ function composer() {
         grow();
         lastTypingSent = 0;
         try {
-            const { notInChat } = await api(`/api/chats/${state.chatId}/messages`, { method: 'POST', body: { text } });
-            offerToAdd(notInChat || []);
+            const { notInChat, unknownTags } = await api(`/api/chats/${state.chatId}/messages`, { method: 'POST', body: { text } });
+            offerToAdd(notInChat || [], unknownTags || []);
         } catch (e) {
             box.value = text;
             grow();
