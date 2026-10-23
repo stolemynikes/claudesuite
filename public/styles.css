@@ -435,9 +435,9 @@ td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--rule
 /* Permission question of your Claude: a popup above everything, and a bar to bring it back after "Later" */
 .perm-layer { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; }
 .perm-layer[hidden], .perm-bar[hidden] { display: none; }
-.perm-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); animation: fade var(--base) var(--ease-out); }
+.perm-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); animation: fade var(--base) var(--ease-out); }
 .perm-card { position: relative; width: min(560px, 100%); max-height: calc(100dvh - 32px); overflow: auto; display: grid; gap: 12px; padding: 20px;
-  border-radius: var(--radius); background: var(--surface); color: var(--ink); border: 2px solid var(--claude-edge);
+  border-radius: var(--radius); background: linear-gradient(var(--surface), var(--surface)), var(--bg); color: var(--ink); border: 2px solid var(--claude-edge);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); animation: rise var(--base) var(--ease-out); }
 .perm-head { display: flex; align-items: center; gap: 10px; color: var(--claude); }
 .perm-head h2 { margin: 0; font-size: 18px; color: var(--ink); flex: 1; }
@@ -447,7 +447,7 @@ td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--rule
   border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--rule); font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .perm-actions .btn { min-width: 110px; }
 .perm-actions .btn.danger { border-color: var(--bad); }
-.perm-bar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 40; display: inline-flex; align-items: center; gap: 8px;
+.perm-bar { position: fixed; top: 72px; left: 50%; transform: translateX(-50%); z-index: 40; display: inline-flex; align-items: center; gap: 8px;
   max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 999px; cursor: pointer; font: inherit; font-weight: 600;
   background: var(--claude); color: #fff; border: none; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); animation: rise var(--base) var(--ease-out); }
 .perm-bar-open { text-decoration: underline; }
