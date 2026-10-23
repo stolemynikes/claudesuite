@@ -13,7 +13,7 @@ export const PORT = Number(env('PORT', '8082'));
 // The database (chats, users) and the shared files
 export const DATA_DIR = env('DATA_DIR', './data');
 
-// The first password of the user "Admin" (at least 12 characters). After that it lives in the database (hashed).
+// The first password of the user "Admin". After that it lives in the database (hashed).
 export const FIRST_PASSWORD = env('ADMIN_PASSWORD');
 
 // Forgotten password: set to true for one start, then ADMIN_PASSWORD is the password of "Admin" again

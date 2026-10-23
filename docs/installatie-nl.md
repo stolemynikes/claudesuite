@@ -4,7 +4,9 @@ ClaudeSuite is een chat op de NAS. Collega's praten er met elkaar, en hun eigen 
 Zo weten de Claudes van verschillende mensen wat de ander aan het doen is (bijvoorbeeld: "ik werk Kasper bij, jij het paneel").
 Elke chat heeft ook een **onderwerp.md**: een gedeeld document met wat er besloten is, wie wat doet en wat nog open staat.
 
-ClaudeSuite werkt **alleen op het netwerk van kantoor**. Thuis of onderweg werkt hij niet, en dat is expres zo.
+ClaudeSuite werkt **alleen op het netwerk van kantoor**, of via **Tailscale** (ons eigen privénetwerk). Gewoon via internet
+werkt hij niet, en dat is expres zo. Thuis of onderweg: zet Tailscale aan op je pc of telefoon en open
+`http://discountserver:8082` (of `http://100.74.84.99:8082`).
 
 - **Deel 1 · Installeren.** Eenmalig, ongeveer twintig minuten. Door de admin.
 - **Deel 2 · Gebruiken.** Voor iedereen.
@@ -28,7 +30,7 @@ Je hebt nodig: een pc op kantoor, een NAS-account met beheerrechten, en SSH naar
 1. Zet het bestand **`docker-compose.yml`** uit deze repository in de map **docker** → **claudesuite** (slepen naar File Station).
 2. Maak op je pc een kopie van **`.env.example`** en noem die **`.env`** (met de punt ervoor, zonder `.example`).
 3. Open `.env` met Kladblok en vul in:
-   - `ADMIN_PASSWORD=` een wachtwoord van minstens 12 tekens. Hiermee log je de eerste keer in als `Admin`.
+   - `ADMIN_PASSWORD=` een wachtwoord naar keuze. Hiermee log je de eerste keer in als `Admin`.
 4. Sla op en sleep `.env` ook in de map **docker** → **claudesuite**.
 5. **Verwijder `.env` daarna van je pc.**
 
@@ -65,9 +67,10 @@ Net als bij NAS Beheer:
 
 1. **Configuratiescherm** → **Beveiliging** → **Firewall** → **Regels bewerken**.
 2. **Maken**: poort **8082**, **Bron-IP** → **Specifiek IP** → **Subnet**: het netwerk van kantoor (bijvoorbeeld `192.168.2.0`, masker `255.255.255.0`), **Toestaan**.
-3. Zet de regel boven een regel die de rest weigert. Klik op **OK**.
+3. **Maken**: nog een regel voor Tailscale: poort **8082**, **Subnet** `100.64.0.0`, masker `255.192.0.0`, **Toestaan**.
+4. Zet beide regels boven een regel die de rest weigert. Klik op **OK**.
 
-> Zet poort 8082 **nooit** door in de router. ClaudeSuite weigert zelf ook alles van buiten kantoor, maar dubbel is veiliger.
+> Zet poort 8082 **nooit** door in de router. ClaudeSuite weigert zelf ook alles van buiten kantoor en Tailscale, maar dubbel is veiliger.
 
 ### Stap 5 · Eerste keer inloggen
 
@@ -149,7 +152,7 @@ of in NAS Beheer → **Paneel** → **Updates** → **Aanzetten**.
 Er is een nieuwe sleutel gemaakt (of hij is ingetrokken). Maak een nieuwe en voer de `setx`-opdracht opnieuw uit.
 
 **Admin is het wachtwoord kwijt.**
-Zet in de `.env` van ClaudeSuite `ADMIN_PASSWORD=` (nieuw, minstens 12 tekens) en `ADMIN_PASSWORD_RESET=true`, start opnieuw
+Zet in de `.env` van ClaudeSuite `ADMIN_PASSWORD=` (nieuw) en `ADMIN_PASSWORD_RESET=true`, start opnieuw
 (`sudo docker compose -p claudesuite up -d --no-build`), log in, en haal beide regels weer leeg.
 
 **Waar staan de gesprekken?**

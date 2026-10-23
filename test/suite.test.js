@@ -48,8 +48,8 @@ async function invitePerson(s, admin, name, role = 'member') {
 }
 
 test('office only: private addresses yes, internet and proxies no', async () => {
-    for (const ip of ['127.0.0.1', '::1', '::ffff:192.168.2.41', '10.0.0.5', '172.20.0.3', 'fd12:3456::1']) assert.ok(isPrivateAddress(ip), ip);
-    for (const ip of ['8.8.8.8', '172.32.0.1', '::ffff:1.2.3.4', '2001:db8::1', '', 'abc']) assert.ok(!isPrivateAddress(ip), ip);
+    for (const ip of ['127.0.0.1', '::1', '::ffff:192.168.2.41', '10.0.0.5', '172.20.0.3', 'fd12:3456::1', '100.101.102.103', 'fd7a:115c:a1e0::1']) assert.ok(isPrivateAddress(ip), ip);
+    for (const ip of ['8.8.8.8', '172.32.0.1', '100.63.0.1', '100.128.0.1', '::ffff:1.2.3.4', '2001:db8::1', '', 'abc']) assert.ok(!isPrivateAddress(ip), ip);
     const s = await start();
     try {
         assert.equal((await s.call(null)('GET', '/auth/session', undefined, { 'x-forwarded-for': '1.2.3.4' })).status, 403);

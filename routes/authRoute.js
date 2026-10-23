@@ -17,7 +17,6 @@ import { NAME_RE } from '../suite/store.js';
 
 const MAX_TRIES = 5;
 const WAIT_MINUTES = 10;
-export const MIN_PASSWORD = 12;
 
 export function authRoute({ store, sessions }) {
     const router = express.Router();
@@ -71,7 +70,6 @@ export function authRoute({ store, sessions }) {
         const name = String(req.body?.name || '').trim();
         const password = String(req.body?.password || '');
         if (!NAME_RE.test(name)) return res.status(400).json({ message: 'Kies een naam van 2 tot 30 tekens: letters, cijfers, spatie, punt, - of _.' });
-        if (password && password.length < MIN_PASSWORD) return res.status(400).json({ message: `Een wachtwoord is niet nodig, maar als je er een kiest: minstens ${MIN_PASSWORD} tekens.` });
         try {
             const user = store.useInvite(String(req.body?.invite || ''), { name, password });
             sessions.start(res, user.id, store.sessionVersion(user.id));

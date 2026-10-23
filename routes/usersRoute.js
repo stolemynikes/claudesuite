@@ -1,7 +1,6 @@
 import express from 'express';
 import { apiGuard, humanOnly, adminOnly } from '../suite/guard.js';
 import { ROLES } from '../suite/store.js';
-import { MIN_PASSWORD } from './authRoute.js';
 
 // Your own account, and (beheerder) the other accounts and invites. Never for Claude.
 //
@@ -31,7 +30,7 @@ export function usersRoute({ store, sessions }) {
     router.post('/me/password', (req, res) => {
         const next = String(req.body?.next || '');
         if (req.user.hasPassword && !store.checkPassword(req.user.id, String(req.body?.current || ''))) return res.status(400).json({ message: 'Je huidige wachtwoord klopt niet.' });
-        if (next.length < MIN_PASSWORD) return res.status(400).json({ message: `Kies een wachtwoord van minstens ${MIN_PASSWORD} tekens.` });
+        if (!next) return res.status(400).json({ message: 'Kies een wachtwoord.' });
         store.setPassword(req.user.id, next);
         // this browser stays logged in, all others stop
         sessions.start(res, req.user.id, store.sessionVersion(req.user.id));

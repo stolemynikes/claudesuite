@@ -106,11 +106,17 @@ function action(label, run, { kind = '', iconName = null } = {}) {
 
 // The clipboard API only exists on https; on the office network (http) the old way (select + copy) still works
 async function copyText(text) {
-    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    if (navigator.clipboard && window.isSecureContext) {
+        try { return await navigator.clipboard.writeText(text); } catch { /* no permission: the old way below */ }
+    }
     const box = h('textarea', { class: 'visually-hidden', readonly: true, 'aria-hidden': 'true' }, text);
     document.body.append(box);
+    // the text must have focus and be selected, or "copy" copies nothing (setSelectionRange for iPhone)
+    box.focus({ preventScroll: true });
     box.select();
-    const ok = document.execCommand('copy');
+    box.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* ok stays false */ }
     box.remove();
     if (!ok) throw new Error('Kopiëren lukte niet. Selecteer de tekst en druk op Ctrl+C.');
 }
@@ -188,7 +194,7 @@ async function showJoin(secret) {
     h('p', {}, 'Kies je naam en een wachtwoord. Je Claude schrijft later als "Claude (jouw naam)".'),
     h('label', { for: 'join-name' }, 'Naam (bijv. je voornaam)', name),
     h('label', { for: 'join-password' }, 'Wachtwoord (niet nodig)', password),
-    h('p', { class: 'muted small' }, 'Zonder wachtwoord blijft dit apparaat 30 dagen ingelogd. Een ander apparaat (je telefoon) koppel je later via je account. Kies je wel een wachtwoord: minstens 12 tekens.'), error,
+    h('p', { class: 'muted small' }, 'Zonder wachtwoord blijft dit apparaat 30 dagen ingelogd. Een ander apparaat (je telefoon) koppel je later via je account.'), error,
     h('button', { class: 'btn primary', type: 'submit' }, 'Account maken'));
     root.replaceChildren(h('div', { class: 'page full' }, h('div', { class: 'column' }, form)));
     name.focus();
@@ -797,7 +803,7 @@ async function showProfile() {
         h('div', { class: 'card' }, h('h2', {}, user.hasPassword ? 'Wachtwoord wijzigen' : 'Wachtwoord (niet nodig)'),
             user.hasPassword ? null : h('p', { class: 'muted' }, 'Je logt in via je gekoppelde apparaten. Een wachtwoord is alleen handig als je ook op een vreemde computer wilt inloggen.'),
             user.hasPassword ? h('label', { for: 'pw-current' }, 'Huidig wachtwoord', current) : null,
-            h('label', { for: 'pw-next' }, 'Nieuw wachtwoord (minstens 12 tekens)', next),
+            h('label', { for: 'pw-next' }, 'Nieuw wachtwoord', next),
             h('div', { class: 'row' }, action(user.hasPassword ? 'Wijzigen' : 'Wachtwoord instellen', async () => {
                 await api('/api/me/password', { method: 'POST', body: { current: current.value, next: next.value } });
                 current.value = next.value = '';

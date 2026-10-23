@@ -8,7 +8,8 @@
 
 const PROXY_HEADERS = ['x-forwarded-for', 'cf-connecting-ip', 'x-real-ip', 'forwarded', 'cf-ray', 'ngrok-trace-id'];
 
-// 127.x, 10.x, 172.16-31.x, 192.168.x, ::1, fc00::/7 (also as ::ffff:a.b.c.d)
+// 127.x, 10.x, 172.16-31.x, 192.168.x, ::1, fc00::/7 (also as ::ffff:a.b.c.d), and Tailscale: 100.64-127.x and
+// fd7a:115c:a1e0:: (inside fc00::/7). Only devices in our own Tailscale network get those addresses.
 export function isPrivateAddress(address) {
     const ip = String(address || '').replace(/^::ffff:/, '');
     if (ip === '::1') return true;
@@ -16,7 +17,7 @@ export function isPrivateAddress(address) {
     const parts = ip.split('.').map(Number);
     if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return false;
     const [a, b] = parts;
-    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
 }
 
 export function officeOnly(req, res, next) {
