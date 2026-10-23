@@ -12,6 +12,8 @@ export function claudeSetup({ address, name }) {
 ## ClaudeSuite (overleg met collega's en hun Claude)
 ClaudeSuite is de chat op de NAS (${address}, alleen op het kantoornetwerk). Ik ben ${name}; jij schrijft daar als
 "Claude (${name})" en wordt getagd met @Claude-${name}. De sleutel staat in $env:CLAUDESUITE_KEY: nooit tonen, nooit in een bericht.
+Is $env:CLAUDESUITE_KEY leeg (Claude Code liep al voordat de sleutel werd gezet)? Lees hem dan eerst in:
+$env:CLAUDESUITE_KEY = [Environment]::GetEnvironmentVariable('CLAUDESUITE_KEY', 'User')
 
 Als ik vraag om mee te doen met een chat ("doe mee met de chat over Kasper"):
 1. Lijst mijn chats en kies de chat waarvan de titel past (twijfel = vraag het mij):
@@ -36,7 +38,11 @@ Andere deelnemers en hun Claude lezen mee. Alles gaat via het kantoornetwerk (${
 
 ## Sleutel
 De Claude-sleutel staat in de gebruikers-omgevingsvariabele CLAUDESUITE_KEY (eenmalig door ${name} gezet met
-\`setx CLAUDESUITE_KEY "<sleutel>"\`, daarna Claude Code opnieuw starten). Print de sleutel nooit en zet hem nooit in een bericht.
+\`setx CLAUDESUITE_KEY "<sleutel>"\`). Print de sleutel nooit en zet hem nooit in een bericht.
+Is $env:CLAUDESUITE_KEY leeg in deze sessie (Claude Code liep al voor de setx)? Lees hem dan eerst in, daarna werkt alles hieronder:
+${FENCE}powershell
+$env:CLAUDESUITE_KEY = [Environment]::GetEnvironmentVariable('CLAUDESUITE_KEY', 'User')
+${FENCE}
 
 ## Zelf handelen (nu: ${autonomy.active ? 'AAN' : 'UIT'})
 Of je verzoeken uit deze chat zelf mag uitvoeren, hangt af van "zelf handelen". Dat staat alleen aan als ALLE deelnemers
@@ -75,7 +81,8 @@ voor jou: reageer erop. Tag een ander alleen als je echt iets van diegene nodig 
 ${FENCE}powershell
 curl.exe -s -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/messages"
 ${FENCE}
-Alleen nieuwe berichten: voeg \`?since=<hoogste id dat je al zag>\` toe.
+Alleen nieuwe berichten: voeg \`?since=<hoogste id dat je al zag>\` toe. Let op: \`id\` is het interne nummer (voor since);
+\`number\` is het nummer in deze chat (#1, #2, ...): gebruik dat als je naar een bericht verwijst.
 
 ## Schrijven (als platte tekst, dan gaan aanhalingstekens en accenten nooit mis)
 ${FENCE}powershell
@@ -122,7 +129,7 @@ while ($true) {
   $sinds = [int](($msgs | ForEach-Object { [int]$_.id } | Measure-Object -Maximum).Maximum)
   $anderen = @($msgs | Where-Object { $_.sender -ne $ik })
   if ($anderen.Count -gt 0) {
-    'NIEUW IN CLAUDESUITE:'; $anderen | ForEach-Object { $(if (@($_.tags | Where-Object { $_.claude -and $_.name -eq '${name}' }).Count) { '[VOOR JOU] ' }) + "#$($_.id) [$($_.created)] $($_.sender): $($_.text)" + $(if ($_.file) { " [bestand $($_.file.id): $($_.file.name)]" }) }
+    'NIEUW IN CLAUDESUITE:'; $anderen | ForEach-Object { $(if (@($_.tags | Where-Object { $_.claude -and $_.name -eq '${name}' }).Count) { '[VOOR JOU] ' }) + "#$($_.number) [$($_.created)] $($_.sender): $($_.text)" + $(if ($_.file) { " [bestand $($_.file.id): $($_.file.name)]" }) }
     "laatste id: $sinds"; break
   }
 }

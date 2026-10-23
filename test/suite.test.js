@@ -362,3 +362,32 @@ test('presence: a waiting Claude listener shows as live; general CLAUDE.md piece
         s.close();
     }
 });
+
+test('message numbers count per chat, from 1; an old database gets them once', async () => {
+    const s = await start();
+    try {
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
+        const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
+        const a = (await pepijn('POST', '/api/chats', { title: 'Eerste' })).data.chat;
+        const b = (await pepijn('POST', '/api/chats', { title: 'Tweede' })).data.chat;
+        await pepijn('POST', `/api/chats/${a.id}/messages`, { text: 'a1' });
+        await pepijn('POST', `/api/chats/${b.id}/messages`, { text: 'b1' });
+        await pepijn('POST', `/api/chats/${a.id}/messages`, { text: 'a2' });
+        assert.deepEqual((await pepijn('GET', `/api/chats/${a.id}/messages`)).data.messages.map((m) => m.number), [1, 2, 3]);
+        assert.deepEqual((await pepijn('GET', `/api/chats/${b.id}/messages`)).data.messages.map((m) => m.number), [1, 2]);
+    } finally {
+        s.close();
+    }
+
+    // a database from before the numbers: they are filled in once, per chat, in order
+    const { DatabaseSync } = await import('node:sqlite');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudesuite-old-'));
+    const old = new DatabaseSync(path.join(dir, 'suite.db'));
+    old.exec("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, user_id INTEGER, sender TEXT NOT NULL, is_claude INTEGER NOT NULL DEFAULT 0, is_event INTEGER NOT NULL DEFAULT 0, text TEXT NOT NULL DEFAULT '', file_id INTEGER, created TEXT NOT NULL)");
+    for (const chat of [7, 8, 7, 7, 8]) old.prepare('INSERT INTO messages (chat_id, sender, created) VALUES (?, ?, ?)').run(chat, 'x', '2026-10-23');
+    old.close();
+    const store = createStore(dir, { firstPassword: ADMIN_PASSWORD });
+    assert.deepEqual(store.messages(7).map((m) => m.number), [1, 2, 3]);
+    assert.deepEqual(store.messages(8).map((m) => m.number), [1, 2]);
+    store.close();
+});

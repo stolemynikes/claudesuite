@@ -104,9 +104,20 @@ function action(label, run, { kind = '', iconName = null } = {}) {
     return button;
 }
 
+// The clipboard API only exists on https; on the office network (http) the old way (select + copy) still works
+async function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    const box = h('textarea', { class: 'visually-hidden', readonly: true, 'aria-hidden': 'true' }, text);
+    document.body.append(box);
+    box.select();
+    const ok = document.execCommand('copy');
+    box.remove();
+    if (!ok) throw new Error('Kopiëren lukte niet. Selecteer de tekst en druk op Ctrl+C.');
+}
+
 function copyButton(text) {
     const button = action('Kopiëren', async () => {
-        await navigator.clipboard.writeText(text);
+        await copyText(text);
         button.lastChild.textContent = 'Gekopieerd';
         setTimeout(() => { button.lastChild.textContent = 'Kopiëren'; }, 1500);
     }, { kind: 'compact' });
@@ -393,11 +404,11 @@ function messageEl(m, isNew = false) {
         ? h('a', { href: `/api/files/${m.file.id}`, target: '_blank', rel: 'noopener' }, h('img', { src: `/api/files/${m.file.id}`, alt: m.file.name, loading: 'lazy' }))
         : h('a', { class: 'file', href: `/api/files/${m.file.id}?download=1` }, icon('file'), `${m.file.name} · ${size(m.file.size)}`, icon('download'));
     const forMe = (m.tags || []).some((t) => !t.claude && t.name === state.user.name);
-    return colored(h('article', { class: `msg${m.isClaude ? ' claude' : ''}${mine ? ' mine' : ''}${forMe ? ' for-me' : ''}${isNew ? ' new' : ''}`, 'aria-label': `Bericht ${m.id} van ${m.sender}${forMe ? ', je bent getagd' : ''}` },
+    return colored(h('article', { class: `msg${m.isClaude ? ' claude' : ''}${mine ? ' mine' : ''}${forMe ? ' for-me' : ''}${isNew ? ' new' : ''}`, 'aria-label': `Bericht ${m.number} van ${m.sender}${forMe ? ', je bent getagd' : ''}` },
         h('div', { class: 'msg-head' }, m.isClaude ? icon('spark', 'claude-icon') : null, h('b', {}, m.sender),
             // ~/chat-title, only shown in the Shell theme (like the folder in a terminal prompt)
             h('span', { class: 'path' }, `~/${(state.chat?.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '')}`),
-            h('span', {}, `#${m.id} · ${when(m.created)}`)),
+            h('span', {}, `#${m.number} · ${when(m.created)}`)),
         m.text ? h('div', { class: 'msg-body' }, textWithCode(m.text)) : null, file), m.color);
 }
 

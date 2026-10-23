@@ -51,6 +51,11 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
     db.exec(SCHEMA);
     const one = (sql, ...args) => db.prepare(sql).get(...args) || null;
     const all = (sql, ...args) => db.prepare(sql).all(...args);
+    // Messages are numbered per chat (#1, #2, ...): "seq". Older databases get it once, numbered in order.
+    if (!all('PRAGMA table_info(messages)').some((column) => column.name === 'seq')) {
+        db.exec('ALTER TABLE messages ADD COLUMN seq INTEGER');
+        db.exec('UPDATE messages SET seq = (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = messages.chat_id AND m2.id <= messages.id)');
+    }
     const run = (sql, ...args) => db.prepare(sql).run(...args);
 
     // First start: a random session secret, and the user "Admin" with ADMIN_PASSWORD
@@ -80,7 +85,7 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
 
     const chatRow = (row) => (row ? { id: row.id, title: row.title, description: row.description, archived: Boolean(row.archived), created: row.created, createdBy: row.created_by_name || '', lastMessage: row.last_message || row.created, unread: row.unread || 0, tagged: row.tagged || 0 } : null);
     const messageRow = (row) => ({
-        id: row.id, chatId: row.chat_id, sender: row.sender, color: row.color ?? 0, isClaude: Boolean(row.is_claude), isEvent: Boolean(row.is_event), text: row.text, created: row.created,
+        id: row.id, number: row.seq, chatId: row.chat_id, sender: row.sender, color: row.color ?? 0, isClaude: Boolean(row.is_claude), isEvent: Boolean(row.is_event), text: row.text, created: row.created,
         file: row.file_id ? { id: row.file_id, name: row.file_name, type: row.file_type, size: row.file_size } : null,
     });
     // Who was tagged in these messages: tags: [{ name, claude }]
@@ -223,8 +228,9 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
         // tags: [{ userId, claude }] (members only, worked out by the route from @name / @Claude-name)
         addMessage({ chatId, user: author, isClaude = false, isEvent = false, text = '', fileId = null, tags = [] }) {
             const sender = isClaude ? `Claude (${author.name})` : author.name;
-            const info = run('INSERT INTO messages (chat_id, user_id, sender, is_claude, is_event, text, file_id, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                Number(chatId), author.id, sender, isClaude ? 1 : 0, isEvent ? 1 : 0, text, fileId, now());
+            // the next number within this chat, in the same statement (no gap, no double)
+            const info = run('INSERT INTO messages (chat_id, user_id, sender, is_claude, is_event, text, file_id, created, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE chat_id = ?))',
+                Number(chatId), author.id, sender, isClaude ? 1 : 0, isEvent ? 1 : 0, text, fileId, now(), Number(chatId));
             const id = Number(info.lastInsertRowid);
             for (const tag of tags) run('INSERT OR IGNORE INTO mentions (message_id, chat_id, user_id, claude) VALUES (?, ?, ?, ?)', id, Number(chatId), Number(tag.userId), tag.claude ? 1 : 0);
             return withTags([messageRow(one(`${MESSAGE_SQL} WHERE m.id = ?`, id))])[0];
