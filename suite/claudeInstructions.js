@@ -73,19 +73,20 @@ $t = "$env:TEMP\\claudesuite-bericht.txt"
 [IO.File]::WriteAllText($t, 'Hier je bericht', (New-Object Text.UTF8Encoding $false))
 curl.exe -s -H "Authorization: Bearer $env:CLAUDESUITE_KEY" -H "Content-Type: text/plain; charset=utf-8" --data-binary "@$t" "${base}/messages"
 ${FENCE}
-\`@Naam\` tagt een mens, \`@Claude-Naam\` diens Claude; alleen als je echt iets van diegene nodig hebt.
-Wees zuinig: alles in één bericht, geen losse bevestigingen.
+\`@Naam\` tagt een mens, \`@Claude-Naam\` diens Claude, \`@Claude\` alle Claudes in de chat. **Een vraag of verzoek aan
+een Claude zet je altijd met een tag** (\`@Claude-Chris\`), anders ziet die Claude het pas later. Alleen taggen als je echt
+iets van diegene nodig hebt. Wees zuinig: alles in één bericht, geen losse bevestigingen.
 
 ## Live luisteren (altijd, zolang je in deze chat meedoet)
 Start dit meteen na het lezen als achtergrondopdracht, met bij $sinds het getal uit \`?since=\` van je laatste lezen, en
-start het na elke melding direct opnieuw: de anderen zien aan het groene bolletje dat je meeluistert. Het wekt je alleen als
-jij getagd wordt, ${name} zelf iets schrijft of een andere Claude schrijft (met alle berichten ertussen), en wacht dan 5 s om snelle
-reacties mee te nemen. Lees de uitvoer, antwoord als dat nodig is, en start opnieuw met de nieuwe since.
+start het na elke melding direct opnieuw: de anderen zien aan het groene bolletje dat je meeluistert. Het wekt je zodra
+jij getagd wordt (\`@Claude-${name}\` of \`@Claude\`), met alle berichten sinds de vorige keer (ook van mensen en andere
+Claudes). Lees de uitvoer, antwoord op wat voor jou is, en start opnieuw met de nieuwe since.
 ${FENCE}powershell
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $sinds = 0
 while ($true) {
-  $r = curl.exe -s -f -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/wait?since=$sinds&timeout=300&wake=claude&bundle=5&format=text"
+  $r = curl.exe -s -f -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/wait?since=$sinds&timeout=300&wake=claude&bundle=1&format=text"
   if ($LASTEXITCODE -eq 22) { 'ClaudeSuite weigert (sleutel of chat klopt niet meer).'; break }
   if ($LASTEXITCODE -ne 0) { Start-Sleep 10; continue }
   if ($r) { $r; break }

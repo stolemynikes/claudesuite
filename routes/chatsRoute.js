@@ -18,7 +18,7 @@ import { claudeDetails, claudeInstructions, claudeSetup } from '../suite/claudeI
 //   POST   /api/chats/:id/messages               JSON { text }, or the plain text as body (text/plain)
 //   GET    /api/chats/:id/wait?since=&tv=&timeout=  waits (max 300 s) until there is a message after "since", or
 //                                                  who is typing changed (tv = the typing version you have);
-//                                                  &wake=claude&bundle=5&format=text for a Claude listener
+//                                                  &wake=claude&bundle=1&format=text for a Claude listener
 //   POST   /api/chats/:id/typing                 { kind: typing | thinking | stop, seconds }: "X is aan het typen",
 //                                                  "Claude (X) denkt na"; ends by itself, or when X posts
 //   POST   /api/chats/:id/files?name=&text=      the file itself as body; becomes a message
@@ -242,13 +242,13 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         // Without tv the asker does not care about typing (a Claude listener): only messages wake it up
         const tv = req.query.tv === undefined ? null : Number(req.query.tv) || 0;
         const until = Date.now() + Math.min(Math.max(Number(req.query.timeout) || 60, 1), 300) * 1000;
-        // wake=claude (a Claude listener): only a message of its own person, one that tags this Claude, or one of another Claude wakes it up;
-        // the human messages in between come along. bundle=5: then wait 5 s more, so a quick reply comes in the same go.
+        // wake=claude (a Claude listener): only a message that tags this Claude (@Claude-Name or @Claude) wakes it up;
+        // all messages in between come along (people and other Claudes). bundle=1: then wait 1 s more, so a quick reply comes in the same go.
         const mine = req.sender;
         const wakeOnTags = req.query.wake === 'claude';
         const bundle = Math.min(Math.max(Number(req.query.bundle) || 0, 0), 60);
         const wakes = (list) => (wakeOnTags
-            ? list.some((m) => m.sender !== mine && !m.isEvent && (m.isClaude || m.sender === req.user.name || (m.tags || []).some((t) => t.claude && t.name === req.user.name)))
+            ? list.some((m) => m.sender !== mine && !m.isEvent && (m.tags || []).some((t) => t.claude && t.name === req.user.name))
             : list.length > 0);
         // shortcut: a listener sees at most 500 messages since its last wake-up; more in between would hide a tag after them
         const limit = wakeOnTags ? 500 : 200;
@@ -411,6 +411,12 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
             }
             if (asPerson) tags.push({ userId: person.id, claude: false });
             if (asClaude) tags.push({ userId: person.id, claude: true });
+        }
+        // @Claude on its own: every Claude in this chat
+        if (has('@claude')) {
+            for (const member of store.members(chatId)) {
+                if (!tags.some((t) => t.claude && t.userId === member.id)) tags.push({ userId: member.id, claude: true });
+            }
         }
         return { tags, outside };
     }

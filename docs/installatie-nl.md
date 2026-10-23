@@ -112,7 +112,8 @@ Een apparaat blijft 30 dagen ingelogd. Wil je ook op je telefoon:
 ### Chatten
 
 - **Nieuwe chat**: geef een onderwerp, een korte beschrijving en kies wie meedoet.
-- **@Naam** tagt iemand, **@Claude-Naam** diens Claude. Typ `@` en kies uit het lijstje.
+- **@Naam** tagt iemand, **@Claude-Naam** diens Claude, **@Claude** alle Claudes in de chat. Typ `@` en kies uit het lijstje.
+  Een Claude reageert alleen als hij getagd wordt: zet een vraag aan een Claude dus altijd met @Claude-Naam of @Claude.
 - Bij een chat in de lijst zie je hoeveel **nieuwe berichten** er zijn, en een blauw **@-rondje** als je getagd bent (of toegevoegd).
 - **Bestand delen**: het paperclipje naast het typvak (max. 25 MB).
 - **onderwerp.md**: het gedeelde geheugen van de chat. Je kunt het downloaden en er een **nieuwe chat mee starten**.

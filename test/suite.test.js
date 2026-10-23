@@ -451,16 +451,17 @@ test('for a Claude: messages as text, older pages, the listener only wakes on a 
         const next = Number(woke.match(/\?since=(\d+)/)[1]);
         await say(claudeP, 'Ik kijk');
         assert.equal((await claudeP('GET', `/api/chats/${chat.id}/wait?since=${next}&timeout=1&wake=claude&format=text`)).data, '');
-        // another Claude wakes it
-        const again = (await claudeP('GET', `/api/chats/${chat.id}/wait?since=${next}&timeout=5&wake=claude&format=text`));
-        assert.equal(again.data, ''); // still nothing from others
+        // another Claude without a tag does not wake it either; with @Claude-Pepijn it does, and the earlier one comes along
         await say(claudeC, 'Klaar');
+        assert.equal((await claudeP('GET', `/api/chats/${chat.id}/wait?since=${next}&timeout=1&wake=claude&format=text`)).data, '');
+        await say(claudeC, '@Claude-Pepijn wil jij de tests draaien?');
         const done = (await claudeP('GET', `/api/chats/${chat.id}/wait?since=${next}&timeout=5&wake=claude&format=text`)).data;
-        assert.ok(done.includes('Claude (Chris): Klaar') && !done.includes('Ik kijk\n'));
-        // its own person writing (without a tag) wakes it too
+        assert.ok(done.includes('Claude (Chris): Klaar') && done.includes('[VOOR JOU] @Claude-Pepijn') && !done.includes('Ik kijk\n'));
+        // @Claude on its own: every Claude in the chat
         const afterDone = Number(done.match(/\?since=(\d+)/)[1]);
-        await say(pepijn, 'Wat vind jij?');
-        assert.match((await claudeP('GET', `/api/chats/${chat.id}/wait?since=${afterDone}&timeout=5&wake=claude&format=text`)).data, /Pepijn: Wat vind jij\?/);
+        await say(pepijn, '@Claude wat vinden jullie?');
+        assert.match((await claudeP('GET', `/api/chats/${chat.id}/wait?since=${afterDone}&timeout=5&wake=claude&format=text`)).data, /Pepijn: \[VOOR JOU\] @Claude wat/);
+        assert.match((await claudeC('GET', `/api/chats/${chat.id}/wait?since=${afterDone}&timeout=5&wake=claude&format=text`)).data, /\[VOOR JOU\] @Claude wat/);
 
         // short instruction, details on request
         const core = (await claudeP('GET', `/api/chats/${chat.id}/claude.md`)).data;
@@ -487,8 +488,8 @@ test('several Claude sessions of one person: each its own name, they wake each o
         // the other session of the same person wakes the listener, its own message does not
         const listening = kasper('GET', `/api/chats/${chat.id}/wait?since=${first.id}&timeout=10&wake=claude&format=text`);
         await new Promise((r) => setTimeout(r, 100));
-        await facturen('POST', `/api/chats/${chat.id}/messages`, { text: 'Ik doe Facturen' });
-        assert.match((await listening).data, /Claude \(Pepijn · Facturen\): Ik doe Facturen/);
+        await facturen('POST', `/api/chats/${chat.id}/messages`, { text: '@Claude-Pepijn ik doe Facturen' });
+        assert.match((await listening).data, /Claude \(Pepijn · Facturen\): \[VOOR JOU\] @Claude-Pepijn ik doe Facturen/);
 
         // the instruction carries the session header in its commands
         const md = (await s.claude(key)('GET', `/api/chats/${chat.id}/claude.md?sessie=Kasper`)).data;

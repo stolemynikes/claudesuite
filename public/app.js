@@ -464,7 +464,8 @@ function composer() {
     function drawSuggest() {
         const match = tagBeforeCaret();
         const typed = match ? match[1].toLowerCase() : null;
-        options = typed === null ? [] : state.members.flatMap((m) => [{ label: m.name, color: m.color }, { label: `Claude-${m.name}`, color: m.color, claude: true }])
+        // "Claude" on its own tags every Claude in the chat
+        options = typed === null ? [] : [{ label: 'Claude', color: 0, claude: true }, ...state.members.flatMap((m) => [{ label: m.name, color: m.color }, { label: `Claude-${m.name}`, color: m.color, claude: true }])]
             .filter((o) => o.label.toLowerCase().startsWith(typed)).slice(0, 8);
         chosen = Math.min(chosen, Math.max(options.length - 1, 0));
         suggest.hidden = !options.length;
