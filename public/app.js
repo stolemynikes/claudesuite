@@ -394,7 +394,10 @@ function messageEl(m, isNew = false) {
         : h('a', { class: 'file', href: `/api/files/${m.file.id}?download=1` }, icon('file'), `${m.file.name} · ${size(m.file.size)}`, icon('download'));
     const forMe = (m.tags || []).some((t) => !t.claude && t.name === state.user.name);
     return colored(h('article', { class: `msg${m.isClaude ? ' claude' : ''}${mine ? ' mine' : ''}${forMe ? ' for-me' : ''}${isNew ? ' new' : ''}`, 'aria-label': `Bericht ${m.id} van ${m.sender}${forMe ? ', je bent getagd' : ''}` },
-        h('div', { class: 'msg-head' }, m.isClaude ? icon('spark', 'claude-icon') : null, h('b', {}, m.sender), h('span', {}, `#${m.id} · ${when(m.created)}`)),
+        h('div', { class: 'msg-head' }, m.isClaude ? icon('spark', 'claude-icon') : null, h('b', {}, m.sender),
+            // ~/chat-title, only shown in the Shell theme (like the folder in a terminal prompt)
+            h('span', { class: 'path' }, `~/${(state.chat?.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '')}`),
+            h('span', {}, `#${m.id} · ${when(m.created)}`)),
         m.text ? h('div', { class: 'msg-body' }, textWithCode(m.text)) : null, file), m.color);
 }
 

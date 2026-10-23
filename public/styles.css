@@ -349,48 +349,55 @@ td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--rule
 :root[data-theme="hackerman"] .logo { background: #000; color: var(--accent); border-color: var(--accent); box-shadow: 0 0 10px rgba(57, 255, 122, 0.6); }
 :root[data-theme="hackerman"] .avatar { border-radius: 0; }
 
-/* ---------- theme "Shell": like Windows Terminal (acrylic tab strip, Cascadia, line numbers, syntax colours) ---------- */
+/* ---------- theme "Shell": an oh-my-zsh prompt per message, colours of "GitHub Dark High Contrast" (.terminal) ---------- */
 :root[data-theme="shell"] {
-  --bg: #0c0c0c; --surface: #161616; --surface-2: #1f1f1f; --surface-3: #2b2b2b; --ink: #e6e6e6; --muted: #8a8a8a;
-  --rule: #262626; --rule-strong: #3a3a3a; --accent: #c586f5; --accent-ink: #0c0c0c; --person: #6fd88b;
-  --mine: transparent; --mine-edge: transparent; --claude: #f28fad; --claude-soft: transparent; --claude-edge: transparent;
-  --bad: #ff6b6b; --ok: #6fd88b; --name-l: 72%; --name-s: 75%; --avatar-l: 26%; --avatar-ink-l: 88%;
-  --radius: 6px; --radius-sm: 4px; --font-body: "Cascadia Code", "Cascadia Mono", Consolas, "Lucida Console", monospace;
+  --bg: #010409; --surface: #0d1117; --surface-2: #161b22; --surface-3: #21262d; --ink: #f0f3f6; --muted: #9ea7b3;
+  --rule: #21262d; --rule-strong: #30363d; --accent: #26cd4d; --accent-ink: #010409; --person: #71b7ff;
+  --mine: transparent; --mine-edge: transparent; --claude: #cb9eff; --claude-soft: transparent; --claude-edge: transparent;
+  --bad: #ff9492; --ok: #26cd4d; --name-l: 74%; --name-s: 90%; --avatar-l: 70%; --avatar-ink-l: 12%;
+  --radius: 4px; --radius-sm: 3px; --font-body: "Cascadia Code", "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  --seg: 10px;
 }
-:root[data-theme="shell"] body { background: radial-gradient(70rem 40rem at 80% 120%, #13233a 0%, transparent 60%), #050505; }
-/* the title bar as a tab strip of acrylic glass */
-:root[data-theme="shell"] .top { background: linear-gradient(180deg, rgba(60, 60, 60, 0.9), rgba(32, 32, 32, 0.92)); border-bottom: 1px solid #000;
-  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); }
-:root[data-theme="shell"] .top .brand h1 { font-family: "Segoe UI", system-ui, sans-serif; font-weight: 400; }
-:root[data-theme="shell"] .logo { background: #1f1f1f; color: #e6e6e6; border: 1px solid #555; border-radius: 3px; }
-:root[data-theme="shell"] .side { background: rgba(22, 22, 22, 0.92); }
-:root[data-theme="shell"] .chat-item { border-radius: 6px 6px 0 0; }
-:root[data-theme="shell"] .chat-item[aria-current="true"] { background: #0c0c0c; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), inset 0 2px 0 var(--accent); }
-:root[data-theme="shell"] .chat-head { background: #0c0c0c; }
-/* the messages as lines in an editor: numbers in the margin, no bubbles */
-:root[data-theme="shell"] .messages { counter-reset: line; gap: 2px; padding-left: 64px; background: #0c0c0c; }
-:root[data-theme="shell"] .msg { position: relative; counter-increment: line; max-width: 100%; align-self: stretch; background: transparent; border: none;
-  box-shadow: none !important; border-radius: 0; padding: 4px 8px; }
-:root[data-theme="shell"] .msg::before { content: counter(line); position: absolute; left: -52px; top: 4px; width: 40px; text-align: right; color: #5a5a5a; }
-:root[data-theme="shell"] .msg.event { align-self: stretch; text-align: left; color: #6a9955; padding: 4px 8px; }
-:root[data-theme="shell"] .msg.event::before { content: counter(line); color: #5a5a5a; }
-:root[data-theme="shell"] .msg.mine { align-self: stretch; }
-:root[data-theme="shell"] .msg:hover { background: rgba(255, 255, 255, 0.03); }
-:root[data-theme="shell"] .msg.for-me { background: rgba(197, 134, 245, 0.08); box-shadow: inset 2px 0 0 var(--accent) !important; }
-:root[data-theme="shell"] .msg-head { margin: 0; }
-:root[data-theme="shell"] .msg-head span { color: #e3c06b; }
-:root[data-theme="shell"] .msg-body { color: #e6e6e6; padding-left: 2ch; }
-:root[data-theme="shell"] .msg.claude .msg-head .claude-icon { color: #c586f5; }
-:root[data-theme="shell"] .msg pre { background: #161616; border-color: #262626; color: #c3e88d; }
-:root[data-theme="shell"] .mention { color: #c586f5; }
-:root[data-theme="shell"] .thinking { background: transparent; border: none; color: #f28fad; padding-left: 8px; }
-/* the input as the prompt line with a blinking block cursor */
-:root[data-theme="shell"] .composer { background: #0c0c0c; }
-:root[data-theme="shell"] .composer textarea { background: #0c0c0c; border-color: #2b2b2b; border-radius: 4px; caret-color: #e6e6e6; caret-shape: block; }
-:root[data-theme="shell"] .composer-row::before { content: ">"; align-self: center; color: #6fd88b; font-weight: 700; padding-left: 4px; }
+:root[data-theme="shell"] body { font-size: 15px; line-height: 1.6; }
+/* title bar like a terminal window, with the three round buttons */
+:root[data-theme="shell"] .top { background: #161b22; border-bottom: 1px solid #30363d; }
+:root[data-theme="shell"] .top nav { margin-left: auto; }
+:root[data-theme="shell"] .top::after { content: ""; width: 54px; height: 14px; flex: none; margin-left: 8px;
+  background: radial-gradient(circle at 7px 7px, #f0883e 6px, transparent 6.5px), radial-gradient(circle at 27px 7px, #71b7ff 6px, transparent 6.5px),
+              radial-gradient(circle at 47px 7px, #ff9492 6px, transparent 6.5px); }
+:root[data-theme="shell"] .logo { background: #010409; color: #26cd4d; border: 1px solid #30363d; }
+:root[data-theme="shell"] .side, :root[data-theme="shell"] .chat-head, :root[data-theme="shell"] .composer { background: #0d1117; }
+:root[data-theme="shell"] .chat-item[aria-current="true"] { background: #161b22; box-shadow: inset 3px 0 0 #26cd4d; }
+:root[data-theme="shell"] .chat-item b::before { content: "~/"; color: #71b7ff; }
+:root[data-theme="shell"] .messages { gap: 14px; background: #010409; }
+/* every message: a prompt line of coloured segments with arrows, then the text after ╰─❯ */
+:root[data-theme="shell"] .msg { align-self: stretch; max-width: 100%; background: transparent; border: none; box-shadow: none !important; padding: 0; border-radius: 0; }
+:root[data-theme="shell"] .msg-head { gap: 0; margin-bottom: 4px; align-items: stretch; font-size: 14px; line-height: 24px; flex-wrap: nowrap; }
+:root[data-theme="shell"] .msg-head > * { margin-left: calc(var(--seg) * -1 + 2px); padding: 0 calc(var(--seg) + 8px) 0 calc(var(--seg) + 6px);
+  clip-path: polygon(0 0, calc(100% - var(--seg)) 0, 100% 50%, calc(100% - var(--seg)) 100%, 0 100%, var(--seg) 50%); white-space: nowrap; }
+:root[data-theme="shell"] .msg-head > :first-child { margin-left: 0; padding-left: 10px; clip-path: polygon(0 0, calc(100% - var(--seg)) 0, 100% 50%, calc(100% - var(--seg)) 100%, 0 100%); }
+:root[data-theme="shell"] .msg-head b { background: hsl(var(--user-h, 215) 75% 68%); color: #010409 !important; font-weight: 700; }
+:root[data-theme="shell"] .msg.claude .msg-head .claude-icon { width: 14px; height: 14px; padding: 5px 14px 5px 10px; flex: none; background: #cb9eff; color: #010409; box-sizing: content-box; }
+:root[data-theme="shell"] .msg-head .path { display: inline-block; background: #71b7ff; color: #010409; font-weight: 600; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
+:root[data-theme="shell"] .msg-head > span:last-child { background: #21262d; color: #9ea7b3; }
+:root[data-theme="shell"] .msg-body { color: #f0f3f6; padding-left: 0; }
+:root[data-theme="shell"] .msg-body::before { content: "╰─❯ "; color: #26cd4d; font-weight: 700; }
+:root[data-theme="shell"] .msg.claude .msg-body::before { color: #cb9eff; }
+:root[data-theme="shell"] .msg.for-me .msg-body::before { color: #f0b72f; }
+:root[data-theme="shell"] .msg.for-me { box-shadow: none !important; }
+:root[data-theme="shell"] .msg pre { background: #0d1117; border: 1px solid #30363d; color: #39c5cf; }
+:root[data-theme="shell"] .msg .file { background: #0d1117; border-color: #30363d; color: #71b7ff; }
+:root[data-theme="shell"] .mention { color: #f0b72f; }
+:root[data-theme="shell"] .mention.me { background: #f0b72f; color: #010409; }
+:root[data-theme="shell"] .msg.event { align-self: stretch; text-align: left; color: #9ea7b3; font-style: italic; padding: 0; }
+:root[data-theme="shell"] .msg.event::before { content: "# "; color: #7a828e; font-style: normal; }
+:root[data-theme="shell"] .thinking { background: transparent; border: none; color: #cb9eff; padding-left: 0; }
+/* the input as the prompt line, with the cursor colour of the profile */
+:root[data-theme="shell"] .composer-row::before { content: "❯"; align-self: center; color: #26cd4d; font-weight: 700; padding: 0 2px 0 4px; }
+:root[data-theme="shell"] .composer textarea { background: #010409; border-color: #30363d; border-radius: 4px; caret-color: #ff967d; }
 :root[data-theme="shell"] .btn { border-radius: 4px; }
-:root[data-theme="shell"] .btn.primary { background: #c586f5; border-color: #c586f5; color: #0c0c0c; }
-:root[data-theme="shell"] .btn.primary:hover { background: #d4a3f8; border-color: #d4a3f8; }
+:root[data-theme="shell"] .btn.primary { background: #26cd4d; border-color: #26cd4d; color: #010409; }
+:root[data-theme="shell"] .btn.primary:hover { background: #4ae168; border-color: #4ae168; }
 
 /* ---------- theme "VS Code": Dark+ ---------- */
 :root[data-theme="vscode"] {
@@ -419,3 +426,6 @@ td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--rule
 :root[data-theme="hackerman"] .top, :root[data-theme="hackerman"] .side, :root[data-theme="hackerman"] .chat-head,
 :root[data-theme="hackerman"] .composer, :root[data-theme="hackerman"] .card, :root[data-theme="hackerman"] .drawer { background: rgba(2, 10, 3, 0.82); }
 :root[data-theme="hackerman"] .msg { background: rgba(0, 6, 1, 0.78); }
+
+/* the ~/chat-title segment is only for the Shell theme */
+.msg-head .path { display: none; }
