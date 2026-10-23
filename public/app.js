@@ -853,7 +853,8 @@ function setupCommand(key) {
         '$f = "$HOME\\.claude\\CLAUDE.md"',
         'New-Item -ItemType Directory -Force (Split-Path $f) | Out-Null',
         '$old = if (Test-Path $f) { [IO.File]::ReadAllText($f) } else { \'\' }',
-        `$new = Invoke-RestMethod -Headers @{ Authorization = "Bearer $k" } "${url}"`,
+        // Stop: when ClaudeSuite cannot be reached, nothing is written and no "staat nu in" appears
+        `$new = Invoke-RestMethod -ErrorAction Stop -Headers @{ Authorization = "Bearer $k" } "${url}"`,
         '$old = [regex]::Replace($old, \'(?s)\\s*<!-- claudesuite:start -->.*?<!-- claudesuite:end -->\\s*\', [Environment]::NewLine)',
         '[IO.File]::WriteAllText($f, ($old.Trim() + [Environment]::NewLine + [Environment]::NewLine + $new.Trim() + [Environment]::NewLine).TrimStart(), (New-Object Text.UTF8Encoding $false))',
         '"ClaudeSuite staat nu in $f"',
