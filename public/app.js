@@ -678,6 +678,69 @@ function watchChatList() {
 const THEMES = [['glas', 'Glas'], ['nacht', 'Nacht'], ['grafiet', 'Grafiet'], ['licht', 'Licht'], ['terminal', 'Terminal'], ['hackerman', 'Hackerman'], ['shell', 'Shell'], ['vscode', 'VS Code']];
 function applyTheme(name) {
     document.documentElement.dataset.theme = THEMES.some(([id]) => id === name) ? name : 'glas';
+    matrixRain(document.documentElement.dataset.theme === 'hackerman');
+}
+
+// Hackerman: falling green characters behind everything, drawn on a canvas in the browser (the NAS does nothing).
+// About 20 frames a second, paused while the tab is in the background, and still with "reduce motion".
+let matrix = null;
+function matrixRain(on) {
+    if (!on) {
+        if (matrix) {
+            cancelAnimationFrame(matrix.frame);
+            matrix.canvas.remove();
+            matrix = null;
+        }
+        return;
+    }
+    if (matrix) return;
+    const canvas = h('canvas', { class: 'matrix', 'aria-hidden': 'true' });
+    document.body.prepend(canvas);
+    const ctx = canvas.getContext('2d');
+    const glyphs = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789ABCDEF<>/{}=+*';
+    const size = 16;
+    let drops = [];
+    const still = matchMedia('(prefers-reduced-motion: reduce)');
+    function fit() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+        drops = Array.from({ length: Math.ceil(innerWidth / size) }, () => Math.random() * -innerHeight / size);
+        ctx.fillStyle = '#000300';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    function step() {
+        // a see-through black layer: old characters fade out slowly into a trail
+        ctx.fillStyle = 'rgba(0, 3, 0, 0.08)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = `${size}px Consolas, monospace`;
+        drops.forEach((y, i) => {
+            const char = glyphs[Math.floor(Math.random() * glyphs.length)];
+            ctx.fillStyle = Math.random() > 0.975 ? '#d7ffe4' : '#39ff7a';
+            ctx.fillText(char, i * size, y * size);
+            drops[i] = y * size > canvas.height && Math.random() > 0.975 ? 0 : y + 1;
+        });
+    }
+    let last = 0;
+    function loop(time) {
+        matrix.frame = requestAnimationFrame(loop);
+        if (document.hidden || time - last < 50) return;
+        last = time;
+        step();
+    }
+    // no movement: one still picture of the rain, spread over the whole screen (again after every resize, which clears it)
+    function stillPicture() {
+        drops = drops.map(() => Math.random() * (innerHeight / size));
+        for (let i = 0; i < 40; i += 1) step();
+    }
+    matrix = { canvas, frame: 0 };
+    fit();
+    addEventListener('resize', () => {
+        if (!matrix) return;
+        fit();
+        if (still.matches) stillPicture();
+    });
+    if (still.matches) stillPicture();
+    else matrix.frame = requestAnimationFrame(loop);
 }
 // ?thema=licht in the address also works (handy to compare them side by side)
 try {
