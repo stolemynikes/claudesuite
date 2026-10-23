@@ -460,3 +460,31 @@ test('for a Claude: messages as text, older pages, the listener only wakes on a 
         s.close();
     }
 });
+
+test('several Claude sessions of one person: each its own name, they wake each other', async () => {
+    const s = await start();
+    try {
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
+        const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
+        const { chat } = (await pepijn('POST', '/api/chats', { title: 'Twee sessies' })).data;
+        const key = (await pepijn('POST', '/api/me/claude-key')).data.key;
+        const kasper = (m, u, b) => s.claude(key)(m, u, b, { 'x-sessie': 'Kasper' });
+        const facturen = (m, u, b) => s.claude(key)(m, u, b, { 'x-sessie': 'Facturen' });
+        assert.equal((await s.claude(key)('GET', '/api/chats', undefined, { 'x-sessie': 'mag<niet>' })).status, 400);
+
+        const first = (await kasper('POST', `/api/chats/${chat.id}/messages`, { text: 'Ik doe Kasper' })).data.message;
+        assert.equal(first.sender, 'Claude (Pepijn · Kasper)');
+        // the other session of the same person wakes the listener, its own message does not
+        const listening = kasper('GET', `/api/chats/${chat.id}/wait?since=${first.id}&timeout=10&wake=claude&format=text`);
+        await new Promise((r) => setTimeout(r, 100));
+        await facturen('POST', `/api/chats/${chat.id}/messages`, { text: 'Ik doe Facturen' });
+        assert.match((await listening).data, /Claude \(Pepijn · Facturen\): Ik doe Facturen/);
+
+        // the instruction carries the session header in its commands
+        const md = (await s.claude(key)('GET', `/api/chats/${chat.id}/claude.md?sessie=Kasper`)).data;
+        assert.match(md, /"Claude \(Pepijn · Kasper\)"/);
+        assert.match(md, /-H "X-Sessie: Kasper"/);
+    } finally {
+        s.close();
+    }
+});

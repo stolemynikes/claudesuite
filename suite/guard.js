@@ -42,8 +42,13 @@ export function apiGuard({ store, sessions }) {
         if (bearer) {
             const user = store.userByClaudeKey(bearer[1]);
             if (!user) return res.status(401).json({ message: 'Deze Claude-sleutel klopt niet (meer). Maak een nieuwe op je profiel.' });
+            // One person can run several Claude Code sessions: each names itself with "X-Sessie: Kasper" and then
+            // writes as "Claude (Pepijn · Kasper)". Without it: "Claude (Pepijn)".
+            const session = sessionName(req.get('x-sessie'));
+            if (session === null) return res.status(400).json({ message: 'X-Sessie: 1 tot 24 tekens, alleen letters, cijfers, spatie, punt, - of _.' });
             req.user = user;
             req.isClaude = true;
+            req.sender = `Claude (${user.name}${session ? ` · ${session}` : ''})`;
             return next();
         }
         const user = currentUser(req, { store, sessions });
@@ -51,8 +56,16 @@ export function apiGuard({ store, sessions }) {
         if (req.method !== 'GET' && req.get('x-suite') !== '1') return res.status(403).json({ message: 'Niet toegestaan.' });
         req.user = user;
         req.isClaude = false;
+        req.sender = user.name;
         next();
     };
+}
+
+// '' = no session name, null = not allowed
+export function sessionName(value) {
+    const name = String(value ?? '').trim();
+    if (!name) return '';
+    return /^[A-Za-z0-9 ._-]{1,24}$/.test(name) ? name : null;
 }
 
 // Only people (not their Claude)

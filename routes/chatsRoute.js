@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { apiGuard, humanOnly } from '../suite/guard.js';
+import { apiGuard, humanOnly, sessionName } from '../suite/guard.js';
 import { claudeDetails, claudeInstructions, claudeSetup } from '../suite/claudeInstructions.js';
 
 // The chats. People and their Claude (with the person's Claude key) only see the chats they are a member of.
@@ -227,7 +227,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const message = clean(body, MAX_TEXT);
         if (!message) return bad(res, 'Leeg bericht.');
         const { tags, outside } = findTags(message, req.chat.id);
-        res.json({ message: post(req.chat.id, req.user, req.isClaude, message, null, false, tags), notInChat: outside });
+        res.json({ message: post(req, message, null, false, tags), notInChat: outside });
     });
 
     // The person (not their Claude) has seen the chat up to this message
@@ -243,7 +243,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const until = Date.now() + Math.min(Math.max(Number(req.query.timeout) || 60, 1), 300) * 1000;
         // wake=claude (a Claude listener): only a message that tags this Claude, or one of another Claude, wakes it up;
         // the human messages in between come along. bundle=20: then wait 20 s more, so a quick reply comes in the same go.
-        const mine = `Claude (${req.user.name})`;
+        const mine = req.sender;
         const wakeOnTags = req.query.wake === 'claude';
         const bundle = Math.min(Math.max(Number(req.query.bundle) || 0, 0), 60);
         const wakes = (list) => (wakeOnTags
@@ -280,7 +280,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     });
 
     router.post('/chats/:id/typing', open, json, (req, res) => {
-        const sender = req.isClaude ? `Claude (${req.user.name})` : req.user.name;
+        const sender = req.sender;
         const kind = ['typing', 'thinking', 'stop'].includes(req.body?.kind) ? req.body.kind : 'typing';
         const seconds = Math.min(Math.max(Number(req.body?.seconds) || (kind === 'thinking' ? 120 : 6), 1), 300);
         setTyping(req.chat.id, sender, kind === 'stop' ? null : { kind, isClaude: req.isClaude, until: Date.now() + seconds * 1000 });
@@ -318,7 +318,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
             const fileId = store.addFile({ chatId: req.chat.id, userId: req.user.id, name, type, size, stored });
             const caption = clean(req.query.text, MAX_TEXT);
             const { tags, outside } = findTags(caption, req.chat.id);
-            res.json({ message: post(req.chat.id, req.user, req.isClaude, caption, fileId, false, tags), notInChat: outside });
+            res.json({ message: post(req, caption, fileId, false, tags), notInChat: outside });
         });
         req.pipe(out);
     });
@@ -341,7 +341,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const body = typeof req.body === 'string' ? { text: req.body, version: req.query.version } : req.body || {};
         if (body.text === undefined || body.version === undefined) return bad(res, 'Stuur de tekst en de versie waar je mee begon.');
         const newText = String(body.text).replace(/\r\n/g, '\n').slice(0, MAX_BRIEF);
-        const by = req.isClaude ? `Claude (${req.user.name})` : req.user.name;
+        const by = req.sender;
         if (!store.setBrief(req.chat.id, { text: newText, version: body.version, by })) {
             return res.status(409).json({ message: 'Iemand anders heeft onderwerp.md intussen aangepast. Lees hem opnieuw en pas je wijziging daarop toe.', brief: store.brief(req.chat.id) });
         }
@@ -364,13 +364,18 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     });
 
     router.get('/chats/:id/claude.md', (req, res) => {
-        if (req.query.deel === 'meer') return res.type('text/markdown; charset=utf-8').send(claudeDetails({ address: `${req.protocol}://${req.get('host')}`, chat: req.chat }));
-        res.type('text/markdown; charset=utf-8').send(claudeInstructions({ address: `${req.protocol}://${req.get('host')}`, chat: req.chat, name: req.user.name, autonomy: store.autonomy(req.chat.id) }));
+        // the session name from ?sessie= (first time) or the X-Sessie header (already in the commands)
+        const session = sessionName(req.query.sessie ?? req.get('x-sessie'));
+        if (session === null) return bad(res, 'Sessienaam: 1 tot 24 tekens, alleen letters, cijfers, spatie, punt, - of _.');
+        const address = `${req.protocol}://${req.get('host')}`;
+        if (req.query.deel === 'meer') return res.type('text/markdown; charset=utf-8').send(claudeDetails({ address, chat: req.chat, session }));
+        res.type('text/markdown; charset=utf-8').send(claudeInstructions({ address, chat: req.chat, name: req.user.name, session, autonomy: store.autonomy(req.chat.id) }));
     });
 
     // A message, and wake up everyone waiting on this chat
-    function post(chatId, user, isClaude, message, fileId = null, isEvent = false, tags = []) {
-        const saved = store.addMessage({ chatId, user, isClaude, isEvent, text: message, fileId, tags });
+    function post(req, message, fileId = null, isEvent = false, tags = []) {
+        const chatId = req.chat.id;
+        const saved = store.addMessage({ chatId, user: req.user, isClaude: req.isClaude, isEvent, text: message, fileId, tags, sender: req.sender });
         // whoever posts is no longer typing or thinking
         const entry = typingOf(chatId);
         if (entry.who.delete(saved.sender)) entry.version += 1;
@@ -378,7 +383,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         return saved;
     }
     // A short note of the app itself ("heeft Chris toegevoegd"), in the name of whoever did it
-    const note = (req, message, tags = []) => post(req.chat.id, req.user, req.isClaude, message, null, true, tags);
+    const note = (req, message, tags = []) => post(req, message, null, true, tags);
 
     // @Name tags a person, @Claude-Name their Claude (no matter the capitals). Tags only count for members;
     // names of people who are not in the chat come back, so the page can offer to add them.

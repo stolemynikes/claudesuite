@@ -251,8 +251,9 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
         // ---------- messages ----------
         // isEvent: a short note of the app itself ("heeft Chris toegevoegd"), shown small
         // tags: [{ userId, claude }] (members only, worked out by the route from @name / @Claude-name)
-        addMessage({ chatId, user: author, isClaude = false, isEvent = false, text = '', fileId = null, tags = [] }) {
-            const sender = isClaude ? `Claude (${author.name})` : author.name;
+        // sender: given by the route for a named Claude session ("Claude (Pepijn · Kasper)")
+        addMessage({ chatId, user: author, isClaude = false, isEvent = false, text = '', fileId = null, tags = [], sender: given = '' }) {
+            const sender = given || (isClaude ? `Claude (${author.name})` : author.name);
             // the next number within this chat, in the same statement (no gap, no double)
             const info = run('INSERT INTO messages (chat_id, user_id, sender, is_claude, is_event, text, file_id, created, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE chat_id = ?))',
                 Number(chatId), author.id, sender, isClaude ? 1 : 0, isEvent ? 1 : 0, text, fileId, now(), Number(chatId));
