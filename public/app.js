@@ -130,6 +130,12 @@ function copyButton(text) {
     return button;
 }
 
+// A link from the server comes with the address in use now and the Tailscale address (same link, works once)
+function linkBlocks(links) {
+    const labels = links.length > 1 ? ['Op kantoor:', 'Via Tailscale (thuis of onderweg):'] : [];
+    return links.map((link, i) => h('div', {}, labels[i] ? h('p', { class: 'muted small' }, labels[i]) : null, h('p', { class: 'mono' }, link), h('div', {}, copyButton(link))));
+}
+
 // ---------- start, login, invite ----------
 
 async function start() {
@@ -149,7 +155,7 @@ function showLogin(message = '') {
     state.user = null;
     const error = h('p', { class: 'error', role: 'alert' }, message);
     const name = h('input', { id: 'login-name', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', required: true });
-    const password = h('input', { id: 'login-password', type: 'password', autocomplete: 'current-password', required: true });
+    const password = h('input', { id: 'login-password', type: 'password', autocomplete: 'current-password' });
     const form = h('form', { class: 'card', onsubmit: async (event) => {
         event.preventDefault();
         try {
@@ -163,7 +169,7 @@ function showLogin(message = '') {
     } },
     h('div', { class: 'brand' }, logo(), h('h1', {}, 'ClaudeSuite')),
     h('p', { class: 'muted' }, 'Overleg tussen collega\'s en hun Claude. Alleen op het kantoornetwerk.'),
-    h('label', { for: 'login-name' }, 'Naam', name), h('label', { for: 'login-password' }, 'Wachtwoord', password), error,
+    h('label', { for: 'login-name' }, 'Naam', name), h('label', { for: 'login-password' }, 'Wachtwoord (leeg als je er geen hebt)', password), error,
     h('button', { class: 'btn primary', type: 'submit' }, 'Inloggen'),
     h('p', { class: 'muted small' }, 'Of open je persoonlijke inloglink.'));
     root.replaceChildren(h('div', { class: 'page full' }, h('div', { class: 'column' }, form)));
@@ -799,8 +805,8 @@ async function showProfile() {
             h('p', {}, 'Maak een link en open die op je telefoon of andere pc. Hij werkt één keer en 15 minuten lang; daarna blijft dat apparaat 30 dagen ingelogd.'),
             h('div', { class: 'row' },
                 action('Koppellink maken', async () => {
-                    const { link } = await api('/api/me/login-link', { method: 'POST' });
-                    linkOut.replaceChildren(h('div', { class: 'secret' }, h('p', { class: 'mono' }, link), h('p', { class: 'muted' }, 'Deel hem met niemand anders: wie hem als eerste opent, is jou.'), h('div', {}, copyButton(link))));
+                    const { links } = await api('/api/me/login-link', { method: 'POST' });
+                    linkOut.replaceChildren(h('div', { class: 'secret' }, ...linkBlocks(links), h('p', { class: 'muted' }, 'Deel hem met niemand anders: wie hem als eerste opent, is jou.')));
                 }, { kind: 'primary' }),
                 action('Intrekken', async () => {
                     await api('/api/me/login-link', { method: 'DELETE' });
@@ -883,8 +889,8 @@ function showAdmin() {
             return h('tr', {}, h('td', {}, h('span', { class: 'people' }, avatar(u), u.name)), h('td', {}, roleSelect),
                 h('td', {}, isMe ? h('span', { class: 'muted' }, 'jij') : h('div', { class: 'row' },
                     action('Herstellink', async () => {
-                        const { link } = await api(`/api/users/${u.id}/login-link`, { method: 'POST' });
-                        inviteOut.replaceChildren(h('div', { class: 'secret' }, h('p', {}, `Herstellink voor ${u.name} (eenmalig, 60 minuten). Geef hem persoonlijk:`), h('p', { class: 'mono' }, link), h('div', {}, copyButton(link))));
+                        const { links } = await api(`/api/users/${u.id}/login-link`, { method: 'POST' });
+                        inviteOut.replaceChildren(h('div', { class: 'secret' }, h('p', {}, `Herstellink voor ${u.name} (eenmalig, 60 minuten). Geef hem persoonlijk:`), ...linkBlocks(links)));
                     }, { kind: 'compact' }),
                     u.hasLoginLink ? action('Link intrekken', async () => { await api(`/api/users/${u.id}/login-link`, { method: 'DELETE' }); loadUsers(); }, { kind: 'compact' }) : null,
                     u.hasClaudeKey ? action('Sleutel intrekken', async () => { await api(`/api/users/${u.id}/claude-key`, { method: 'DELETE' }); loadUsers(); }, { kind: 'compact' }) : null,
@@ -899,8 +905,8 @@ function showAdmin() {
         h('div', { class: 'card' }, h('h2', {}, 'Iemand uitnodigen'),
             h('p', {}, 'Maak een link en geef die aan de nieuwe collega. Hij werkt één keer en een week lang; daarmee kiest diegene een naam en wachtwoord.'),
             h('div', { class: 'row' }, role, action('Uitnodigingslink maken', async () => {
-                const { link } = await api('/api/invites', { method: 'POST', body: { role: role.value } });
-                inviteOut.replaceChildren(h('div', { class: 'secret' }, h('p', { class: 'mono' }, link), h('div', {}, copyButton(link))));
+                const { links } = await api('/api/invites', { method: 'POST', body: { role: role.value } });
+                inviteOut.replaceChildren(h('div', { class: 'secret' }, ...linkBlocks(links)));
             }, { kind: 'primary' })), inviteOut),
         h('div', { class: 'card' }, h('h2', {}, 'Gebruikers'), h('div', { class: 'table-wrap' }, h('table', {}, usersBody))));
     root.replaceChildren(topBar(), h('div', { class: 'page' }, page));

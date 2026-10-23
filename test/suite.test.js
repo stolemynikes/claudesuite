@@ -71,6 +71,13 @@ test('accounts: invite once, login link, wrong tries blocked, no secrets in the 
         assert.equal((await pepijn('GET', '/api/me')).data.user.name, 'Pepijn');
         // a member cannot invite or see roles
         assert.equal((await pepijn('POST', '/api/invites', { role: 'admin' })).status, 403);
+        // links come with the address in use and the Tailscale address
+        assert.deepEqual((await admin('POST', '/api/invites', { role: 'member' })).data.links.map((l) => l.split('/uitnodiging/')[0]), [s.base, 'http://discountserver:8082']);
+        // without a password: log in with only the name; with a password, an empty one is wrong
+        const { data: invite } = await admin('POST', '/api/invites', { role: 'member' });
+        await s.call(null)('POST', '/auth/join', { invite: invite.link.split('/uitnodiging/')[1], name: 'Zonder' });
+        assert.equal((await s.call(null)('POST', '/auth/login', { name: 'zonder', password: '' })).status, 200);
+        assert.equal((await s.call(null)('POST', '/auth/login', { name: 'Pepijn', password: '' })).status, 401);
         // a new role counts at once, without logging out
         const pepijnId = (await pepijn('GET', '/api/me')).data.user.id;
         assert.equal((await admin('PATCH', `/api/users/${pepijnId}`, { role: 'admin' })).status, 200);
@@ -267,7 +274,7 @@ test('no password: invite only, one-time device link; zelf handelen only when ev
         assert.equal(joined.status, 200, 'an account without a password');
         const roel = s.call(joined.headers.get('set-cookie').split(';')[0]);
         assert.equal((await roel('GET', '/api/me')).data.user.hasPassword, false);
-        assert.equal((await s.call(null)('POST', '/auth/login', { name: 'Roel', password: '' })).status, 401, 'no password = no password login');
+        assert.equal((await s.call(null)('POST', '/auth/login', { name: 'Roel', password: '' })).status, 200, 'no password = log in with only the name');
 
         // a device link works once
         const link = (await roel('POST', '/api/me/login-link')).data.link.replace(/^http:\/\/[^/]+/, s.base);

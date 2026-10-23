@@ -128,10 +128,12 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
         },
         users: () => all('SELECT id FROM users ORDER BY name_lower').map((row) => user(row.id)),
         sessionVersion: (id) => one('SELECT session_version FROM users WHERE id = ?', Number(id))?.session_version ?? null,
-        // The slow check always runs, so the answer time does not tell whether a name exists
+        // The slow check always runs, so the answer time does not tell whether a name exists.
+        // Someone without a password logs in with only their name (owner's choice: only office network / Tailscale).
         checkLogin(name, password) {
             const row = one('SELECT id, password_hash FROM users WHERE name_lower = ?', String(name || '').trim().toLowerCase());
             const ok = verifyPassword(password, row?.password_hash || DUMMY_HASH);
+            if (row && !row.password_hash) return user(row.id);
             return row && ok ? user(row.id) : null;
         },
         checkPassword: (id, password) => verifyPassword(password, one('SELECT password_hash FROM users WHERE id = ?', Number(id))?.password_hash || DUMMY_HASH),

@@ -1,6 +1,7 @@
 import express from 'express';
 import { apiGuard, humanOnly, adminOnly } from '../suite/guard.js';
 import { ROLES } from '../suite/store.js';
+import { TAILSCALE_ADDRESS } from '../config.js';
 
 // Your own account, and (beheerder) the other accounts and invites. Never for Claude.
 //
@@ -25,6 +26,11 @@ export function usersRoute({ store, sessions }) {
     // Only on these paths: the chats route is mounted on /api too, and Claude may use that one
     router.use(['/me', '/users', '/invites'], apiGuard({ store, sessions }), humanOnly, express.json({ limit: '4kb' }));
     const origin = (req) => `${req.protocol}://${req.get('host')}`;
+    // One link, given with the address in use now and with the Tailscale address (the same secret, works once)
+    const linked = (req, path) => {
+        const links = [...new Set([origin(req), TAILSCALE_ADDRESS].filter(Boolean))].map((address) => `${address}${path}`);
+        return { link: links[0], links };
+    };
 
     router.get('/me', (req, res) => res.json({ user: store.user(req.user.id) }));
 
@@ -38,7 +44,7 @@ export function usersRoute({ store, sessions }) {
         res.json({ ok: true });
     });
 
-    router.post('/me/login-link', (req, res) => res.json({ link: `${origin(req)}/l/${store.newLoginLink(req.user.id)}` }));
+    router.post('/me/login-link', (req, res) => res.json(linked(req, `/l/${store.newLoginLink(req.user.id)}`)));
     router.delete('/me/login-link', (req, res) => {
         store.revokeLoginLink(req.user.id);
         res.json({ ok: true });
@@ -58,7 +64,7 @@ export function usersRoute({ store, sessions }) {
 
     router.post('/invites', adminOnly, (req, res) => {
         const role = ROLES.includes(req.body?.role) ? req.body.role : 'member';
-        res.json({ link: `${origin(req)}/uitnodiging/${store.newInvite({ role, by: req.user.id })}` });
+        res.json(linked(req, `/uitnodiging/${store.newInvite({ role, by: req.user.id })}`));
     });
     router.get('/invites', adminOnly, (req, res) => res.json({ invites: store.invites() }));
 
@@ -80,7 +86,7 @@ export function usersRoute({ store, sessions }) {
         res.json({ ok: true });
     });
     router.post('/users/:id/login-link', adminOnly, other, (req, res) => {
-        res.json({ link: `${origin(req)}/l/${store.newLoginLink(req.target.id, 60)}` });
+        res.json(linked(req, `/l/${store.newLoginLink(req.target.id, 60)}`));
     });
     router.delete('/users/:id/login-link', adminOnly, other, (req, res) => {
         store.revokeLoginLink(req.target.id);

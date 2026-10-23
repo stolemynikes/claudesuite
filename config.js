@@ -22,5 +22,8 @@ export const RESET_PASSWORD = env('ADMIN_PASSWORD_RESET') === 'true';
 // How long a device stays logged in (default 30 days: many people use no password, only their invite or a device link)
 export const SESSION_HOURS = Number(env('SESSION_HOURS', '720'));
 
+// The address over Tailscale: links (device, invite, recovery) are also given with this address, for use from home
+export const TAILSCALE_ADDRESS = env('TAILSCALE_ADDRESS', 'http://discountserver:8082').replace(/\/+$/, '');
+
 // Largest file that can be shared in a chat
 export const MAX_FILE_MB = Number(env('MAX_FILE_MB', '25'));
