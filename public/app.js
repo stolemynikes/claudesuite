@@ -392,9 +392,9 @@ function drawPeople() {
     const claude = (name) => (state.claudes || []).find((c) => c.name === name);
     peopleEl.replaceChildren(...state.members.map((m) => {
         const c = claude(m.name);
-        const label = c ? `${m.name}, Claude ${c.listening ? 'luistert live mee' : 'was net actief'}` : m.name;
+        const label = `${m.name}, Claude ${c?.listening ? 'luistert live mee' : c ? 'was net actief, luistert niet' : 'luistert niet mee'}`;
         return h('span', { class: 'person', title: label, 'aria-label': label }, avatar(m),
-            c ? h('span', { class: `claude-badge${c.listening ? ' live' : ''}` }, icon('spark')) : null);
+            h('span', { class: `claude-badge ${c?.listening ? 'live' : 'off'}` }, icon('spark')));
     }), h('span', {}, state.members.map((m) => m.name).join(', ')));
 }
 
@@ -630,17 +630,15 @@ function claudeDrawer() {
     });
     // The short prompt: works when ClaudeSuite is in the person's CLAUDE.md (the command at their key does that)
     const session = h('input', { id: 'join-session', maxlength: '24', placeholder: 'bijv. Kasper', autocomplete: 'off' });
-    const live = h('input', { type: 'checkbox', checked: true });
     const prompt = h('p', { class: 'mono' });
     const promptCopy = h('span');
     const drawPrompt = () => {
         const name = session.value.trim().replace(/[^A-Za-z0-9 ._-]/g, '');
-        const t = `Doe mee met de ClaudeSuite-chat "${state.chat.title}" (nr. ${state.chatId})${name ? ` als sessie "${name}"` : ''}${live.checked ? ' en volg hem live' : ''}.`;
+        const t = `Doe mee met de ClaudeSuite-chat "${state.chat.title}" (nr. ${state.chatId})${name ? ` als sessie "${name}"` : ''} en luister live mee.`;
         prompt.textContent = t;
         promptCopy.replaceChildren(copyButton(t));
     };
     session.addEventListener('input', drawPrompt);
-    live.addEventListener('change', drawPrompt);
     drawPrompt();
     return h('div', { class: 'drawer' },
         drawerHead('Je eigen Claude Code laten meedoen'),
@@ -649,7 +647,6 @@ function claudeDrawer() {
             h('li', {}, 'Plak deze korte opdracht in je Claude Code-sessie:')),
         h('div', { class: 'secret' },
             h('label', { for: 'join-session' }, 'Sessienaam (handig als je meer Claude-vensters open hebt)', session),
-            h('label', { class: 'check' }, live, 'Live volgen'),
             prompt, h('div', { class: 'row' }, promptCopy)),
         h('p', { class: 'muted small' }, 'Geen ClaudeSuite in je CLAUDE.md? Plak dan de volledige instructie hieronder. Terwijl Claude werkt, zie je hier "denkt na".'),
         h('div', { class: 'row' }, copy), text);

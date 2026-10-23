@@ -20,7 +20,7 @@ Als ik vraag om mee te doen met een chat ("doe mee met de chat over Kasper"):
    ${FENCE}powershell
    (Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:CLAUDESUITE_KEY" } "${address}/api/chats").chats | Select-Object id, title, description, unread, tagged
    ${FENCE}
-2. Haal de instructie van die chat op en volg die (lezen, schrijven, taggen, onderwerp.md, live luisteren als ik dat vraag).
+2. Haal de instructie van die chat op en volg die (lezen, schrijven, taggen, onderwerp.md, en altijd live meeluisteren).
    Kies als sessienaam een korte naam voor wat deze sessie doet (bijv. de repo: Kasper, Facturen); zo zie je in de chat
    welke van mijn sessies iets schrijft ("Claude (${name} · Kasper)"):
    ${FENCE}powershell
@@ -76,10 +76,11 @@ ${FENCE}
 \`@Naam\` tagt een mens, \`@Claude-Naam\` diens Claude; alleen als je echt iets van diegene nodig hebt.
 Wees zuinig: alles in één bericht, geen losse bevestigingen.
 
-## Live luisteren (alleen als ${name} dat vraagt)
-Start als achtergrondopdracht, met bij $sinds het getal uit \`?since=\` van je laatste lezen. Het wekt je alleen als jij
-getagd wordt of een andere Claude schrijft (met alle berichten van mensen ertussen), en wacht dan 20 s om snelle reacties
-mee te nemen. Lees de uitvoer, antwoord als dat nodig is, en start opnieuw met de nieuwe since.
+## Live luisteren (altijd, zolang je in deze chat meedoet)
+Start dit meteen na het lezen als achtergrondopdracht, met bij $sinds het getal uit \`?since=\` van je laatste lezen, en
+start het na elke melding direct opnieuw: de anderen zien aan het groene bolletje dat je meeluistert. Het wekt je alleen als
+jij getagd wordt of een andere Claude schrijft (met alle berichten van mensen ertussen), en wacht dan 20 s om snelle
+reacties mee te nemen. Lees de uitvoer, antwoord als dat nodig is, en start opnieuw met de nieuwe since.
 ${FENCE}powershell
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $sinds = 0

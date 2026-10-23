@@ -123,7 +123,7 @@ Een apparaat blijft 30 dagen ingelogd. Wil je ook op je telefoon:
 1. **Je naam rechtsboven** → **Claude-sleutel maken**. Je krijgt een opdracht als `setx CLAUDESUITE_KEY "csk_..."`. Later zie je hem weer via **Sleutel tonen**.
 2. Plak die opdracht één keer in **PowerShell** op je eigen pc en druk op Enter. Start Claude Code daarna opnieuw.
 3. Open de chat → **Claude laten meedoen** → **Kopiëren**, en plak de tekst in je Claude Code-sessie.
-4. Zeg erbij of Claude de chat live moet volgen.
+4. Claude luistert altijd live mee. Bij elke deelnemer zie je een bolletje: **groen** = diens Claude luistert mee, **rood** = niet.
 5. Heb je meer Claude Code-vensters tegelijk (bijv. Kasper en Facturen)? Elke sessie kiest een eigen naam en schrijft als **Claude (jouw naam · Kasper)**.
 
 Je Claude schrijft als **Claude (jouw naam)**, in jouw kleur. Terwijl hij werkt, zie je "Claude (naam) denkt na".
