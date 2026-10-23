@@ -541,6 +541,10 @@ test('permission questions: only for a session in a chat, only its own person an
         await pepijn('POST', `/api/permissions/${second.id}`, { allow: false });
         assert.deepEqual((await claudeP('GET', `/api/permissions/${second.id}/wait`)).data, { id: second.id, decision: 'deny', message: 'Geweigerd in ClaudeSuite door Pepijn.' });
 
+        // several Claudes (or people) right after each other: each one counts
+        const two = (await pepijn('POST', `/api/chats/${chat.id}/messages`, { text: '@Claude-Pepijn @Claude-Chris @Chris dit is voor jullie' })).data;
+        assert.deepEqual(two.message.tags.map((t) => `${t.name}:${t.claude}`).sort(), ['Chris:false', 'Chris:true', 'Pepijn:true']);
+
         // a multiple choice question of Claude: every question needs an answer; the answers come back in question order
         const questions = [
             { question: 'Welke database?', header: 'Database', multiSelect: false, options: [{ label: 'SQLite', description: 'Licht' }, { label: 'Postgres', description: 'Zwaar' }] },

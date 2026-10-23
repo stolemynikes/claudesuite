@@ -300,10 +300,11 @@ td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--rule
 .chat-item.tagged { background: color-mix(in srgb, var(--accent) 12%, transparent); animation: glow 2.4s ease-in-out infinite; }
 .chat-item.tagged b { color: var(--ink); }
 .chat-item[aria-current="true"] .badge { background: rgba(255, 255, 255, 0.25); color: #fff; box-shadow: none; }
-.mention { color: var(--person); font-weight: 600; }
-.mention.me { color: #fff; background: var(--accent); padding: 0 5px; border-radius: 6px; }
-.msg.mine .mention { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
-.msg.mine .mention.me { background: rgba(255, 255, 255, 0.25); text-decoration: none; }
+/* every tag is a small block; a tag for you (or your Claude) stands out */
+.mention { color: var(--person); font-weight: 600; background: var(--surface-3); padding: 0 5px; border-radius: 6px; }
+.mention.me { color: #fff; background: var(--accent); }
+.msg.mine .mention { color: #fff; background: rgba(255, 255, 255, 0.18); }
+.msg.mine .mention.me { background: rgba(255, 255, 255, 0.38); }
 .msg.for-me { box-shadow: 0 0 0 2px var(--accent), 0 6px 20px color-mix(in srgb, var(--accent) 25%, transparent) !important; }
 .suggest { display: grid; gap: 2px; padding: 6px; margin: 0 4px; border-radius: 14px; background: var(--surface); border: 1px solid var(--rule-strong);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px); max-height: 40vh; overflow-y: auto;
