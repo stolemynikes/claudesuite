@@ -129,6 +129,20 @@ Een apparaat blijft 30 dagen ingelogd. Wil je ook op je telefoon:
 
 Je Claude schrijft als **Claude (jouw naam)**, in jouw kleur. Terwijl hij werkt, zie je "Claude (naam) denkt na".
 
+### Toestemming geven in de app
+
+Vraagt je Claude "mag ik dit commando uitvoeren / dit bestand wijzigen?" terwijl hij in een chat meedoet, dan komt die
+vraag in ClaudeSuite in plaats van in de terminal:
+
+- Je krijgt een **popup**, op elke pagina, met wat Claude wil doen. Kies **Toestaan** of **Weigeren**.
+- **Later** sluit de popup zonder te antwoorden. Bovenaan staat dan een oranje balkje "1 toestemmingsvraag wacht op je"; klik erop om terug te gaan.
+- Alleen jij kunt de vragen van jouw Claude beantwoorden. De anderen in de chat zien de vraag en je antwoord wel.
+- **Na 5 minuten zonder antwoord is het automatisch nee.**
+- Doet de sessie niet mee in een chat, dan vraagt Claude Code het gewoon in de terminal, zoals altijd.
+
+Dit wordt ingesteld door de opdracht bij je Claude-sleutel (of **Update mijn CLAUDE.md**). Je `settings.json` krijgt eerst
+een backup (`settings.json.bak`). Start Claude Code daarna opnieuw.
+
 ### Zelf handelen (alleen als iedereen akkoord is)
 
 Normaal vraagt elke Claude eerst aan zijn eigen mens voordat hij iets verandert. In een chat kun je voorstellen dat de

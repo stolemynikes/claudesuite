@@ -244,6 +244,7 @@ async function showMain(chatId) {
     root.replaceChildren(topBar(), mainEl);
     await loadChats();
     watchChatList();
+    watchPermissions();
     if (chatId) openChat(chatId);
     else showNoChat();
 }
@@ -716,6 +717,106 @@ function watchChatList() {
     })();
 }
 
+// ---------- permission questions of my Claude (answered here instead of in the terminal) ----------
+// A popup on every page. "Later" hides it without answering; the bar at the top brings it back.
+// No answer before the time is up counts as no (the server decides that, the page only shows it).
+
+const perm = { list: [], index: 0, open: false, hidden: new Set(), timer: null };
+const permBar = h('button', { class: 'perm-bar', type: 'button', hidden: true, onclick: () => showPermission(0) });
+const permLayer = h('div', { class: 'perm-layer', hidden: true });
+document.body.append(permBar, permLayer);
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && perm.open) hidePermission();
+});
+
+const TOOL_LABELS = { Bash: 'Een commando uitvoeren', PowerShell: 'Een commando uitvoeren', Edit: 'Een bestand wijzigen', MultiEdit: 'Een bestand wijzigen',
+    Write: 'Een bestand schrijven', NotebookEdit: 'Een notebook wijzigen', Read: 'Een bestand lezen', WebFetch: 'Een webpagina ophalen', WebSearch: 'Op internet zoeken' };
+
+function drawPermissions() {
+    const count = perm.list.length;
+    permBar.hidden = !count || perm.open;
+    permBar.replaceChildren(icon('spark'), `${count} toestemmingsvraag${count === 1 ? '' : 'en'} van je Claude wacht${count === 1 ? '' : 'en'} op je`, h('span', { class: 'perm-bar-open' }, 'Bekijken'));
+    if (perm.open && !count) hidePermission();
+    else if (perm.open) drawPermissionDialog();
+    // a new question opens by itself (one you put away with "Later" does not)
+    else if (perm.list.some((r) => !perm.hidden.has(r.id))) showPermission(perm.list.findIndex((r) => !perm.hidden.has(r.id)));
+}
+
+function showPermission(index) {
+    perm.open = true;
+    perm.index = Math.max(0, Math.min(index, perm.list.length - 1));
+    permLayer.hidden = false;
+    permBar.hidden = true;
+    drawPermissionDialog();
+    clearInterval(perm.timer);
+    perm.timer = setInterval(drawCountdown, 1000);
+    permLayer.querySelector('.perm-allow')?.focus();
+}
+
+function hidePermission() {
+    for (const r of perm.list) perm.hidden.add(r.id);
+    perm.open = false;
+    clearInterval(perm.timer);
+    permLayer.hidden = true;
+    drawPermissions();
+}
+
+const permCountdown = h('p', { class: 'small muted' });
+function drawCountdown() {
+    const r = perm.list[perm.index];
+    if (!r) return;
+    const left = Math.max(0, Math.round((new Date(r.expires) - Date.now()) / 1000));
+    permCountdown.className = `small ${left < 60 ? 'error' : 'muted'}`;
+    permCountdown.textContent = left ? `Geen antwoord binnen ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} = automatisch nee.` : 'De tijd is om: dit telt als nee.';
+}
+
+function drawPermissionDialog() {
+    const r = perm.list[perm.index];
+    if (!r) return hidePermission();
+    drawCountdown();
+    const answer = (allow) => action(allow ? 'Toestaan' : 'Weigeren', async () => {
+        await api(`/api/permissions/${r.id}`, { method: 'POST', body: { allow } });
+        perm.list = perm.list.filter((x) => x.id !== r.id);
+        perm.index = Math.min(perm.index, perm.list.length - 1);
+        drawPermissions();
+    }, { kind: allow ? 'primary perm-allow' : 'danger' });
+    const card = h('div', { class: 'perm-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'perm-title' },
+        h('div', { class: 'perm-head' }, icon('spark'), h('h2', { id: 'perm-title' }, 'Je Claude vraagt toestemming'),
+            perm.list.length > 1 ? h('span', { class: 'muted small' }, `${perm.index + 1} van ${perm.list.length}`) : null),
+        h('p', {}, h('b', {}, r.sender), ` in chat "${r.chatTitle}" wil:`),
+        h('p', { class: 'perm-what' }, TOOL_LABELS[r.tool] || `${r.tool} gebruiken`, r.about ? h('span', { class: 'muted' }, ` (${r.about})`) : null),
+        h('pre', { class: 'perm-text' }, r.text),
+        permCountdown,
+        h('div', { class: 'row perm-actions' }, answer(true), answer(false),
+            h('button', { class: 'btn ghost', type: 'button', onclick: hidePermission }, 'Later'),
+            perm.list.length > 1 ? h('button', { class: 'btn ghost', type: 'button', onclick: () => showPermission((perm.index + 1) % perm.list.length) }, 'Volgende') : null),
+        h('p', { class: 'muted small' }, 'Later: de vraag blijft open, je vindt hem terug in het balkje bovenaan. De anderen in de chat zien de vraag en je antwoord.'));
+    permLayer.replaceChildren(h('div', { class: 'perm-backdrop', onclick: hidePermission }), card);
+}
+
+let permWatcher = null;
+function watchPermissions() {
+    if (permWatcher) return;
+    permWatcher = (async () => {
+        let first = true;
+        while (state.user) {
+            try {
+                const seen = perm.list.map((r) => r.id).sort().join(',');
+                const { requests } = await api(first ? '/api/permissions' : `/api/permissions?seen=${seen}&timeout=60`);
+                first = false;
+                perm.list = requests;
+                drawPermissions();
+            } catch (e) {
+                if (e.status === 401) break;
+                await pause(5000);
+            }
+        }
+        perm.list = [];
+        drawPermissions();
+        permWatcher = null;
+    })();
+}
+
 // ---------- my account ----------
 
 // The look of the page, per device (kept in this browser only)
@@ -804,7 +905,7 @@ async function showProfile() {
     const showKey = (key) => {
         const command = `setx CLAUDESUITE_KEY "${key}"; ${setupCommand(`"${key}"`)}`;
         keyOut.replaceChildren(h('div', { class: 'secret' },
-            h('p', {}, 'Plak dit één keer in PowerShell op je eigen pc en druk op Enter. Het zet je sleutel en zet ClaudeSuite in je CLAUDE.md. Start Claude Code daarna opnieuw.'),
+            h('p', {}, 'Plak dit één keer in PowerShell op je eigen pc en druk op Enter. Het zet je sleutel, zet ClaudeSuite in je CLAUDE.md en stuurt toestemmingsvragen naar de app als je in een chat meedoet (je settings.json krijgt eerst een backup). Start Claude Code daarna opnieuw.'),
             h('p', { class: 'mono' }, command), h('div', {}, copyButton(command)),
             h('p', { class: 'muted' }, 'Plak deze sleutel nooit in een chat.')));
     };
@@ -856,7 +957,7 @@ async function showProfile() {
                 user.hasClaudeKey ? action('Update mijn CLAUDE.md', async () => {
                     const command = setupCommand('$env:CLAUDESUITE_KEY');
                     keyOut.replaceChildren(h('div', { class: 'secret' },
-                        h('p', {}, 'Plak dit in PowerShell op de pc waar je sleutel al staat. Het vervangt alleen het ClaudeSuite-stuk in je CLAUDE.md; de rest blijft staan.'),
+                        h('p', {}, 'Plak dit in PowerShell op de pc waar je sleutel al staat. Het vervangt alleen het ClaudeSuite-stuk in je CLAUDE.md en de ClaudeSuite-hook in je settings.json; de rest blijft staan. Start Claude Code daarna opnieuw.'),
                         h('p', { class: 'mono' }, command), h('div', {}, copyButton(command))));
                 }) : null,
                 user.hasClaudeKey ? action('Intrekken', async () => {
@@ -883,6 +984,15 @@ function setupCommand(key) {
         '$old = [regex]::Replace($old, \'(?s)\\s*<!-- claudesuite:start -->.*?<!-- claudesuite:end -->\\s*\', [Environment]::NewLine)',
         '[IO.File]::WriteAllText($f, ($old.Trim() + [Environment]::NewLine + [Environment]::NewLine + $new.Trim() + [Environment]::NewLine).TrimStart(), (New-Object Text.UTF8Encoding $false))',
         '"ClaudeSuite staat nu in $f"',
+        // The permission hook: questions of a session that takes part in a chat are answered in the app.
+        // settings.json is backed up first (settings.json.bak); on any problem it stays as it was.
+        `& { try { $ErrorActionPreference = 'Stop'; $hook = "$HOME\\.claude\\claudesuite-toestemming.ps1"; Invoke-RestMethod -Headers @{ Authorization = "Bearer $k" } "${location.origin}/api/claude-hook.ps1" -OutFile $hook`,
+        '$s = "$HOME\\.claude\\settings.json"; $t = if (Test-Path $s) { [IO.File]::ReadAllText($s) } else { \'\' }; $j = if ($t.Trim()) { $t | ConvertFrom-Json } else { New-Object psobject }',
+        'if (-not $j.hooks) { $j | Add-Member hooks (New-Object psobject) -Force }',
+        '$entry = [pscustomobject]@{ matcher = \'*\'; hooks = @([pscustomobject]@{ type = \'command\'; command = \'powershell -NoProfile -ExecutionPolicy Bypass -File "\' + $hook + \'"\'; timeout = 400 }) }',
+        '$list = @(@($j.hooks.PermissionRequest) | Where-Object { $_ -and ($_.hooks.command -notmatch \'claudesuite-toestemming\') }) + @($entry)',
+        '$j.hooks | Add-Member PermissionRequest $list -Force; if (Test-Path $s) { Copy-Item $s "$s.bak" -Force }',
+        '[IO.File]::WriteAllText($s, ($j | ConvertTo-Json -Depth 50), (New-Object Text.UTF8Encoding $false)); "Toestemmingsvragen gaan nu via ClaudeSuite (als je in een chat meedoet). Start Claude Code opnieuw." } catch { "Toestemming via de app is NIET ingesteld: $_" } }',
     ].join('; ');
 }
 

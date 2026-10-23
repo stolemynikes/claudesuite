@@ -85,8 +85,9 @@ Claudes). Lees de uitvoer, antwoord op wat voor jou is, en start opnieuw met de 
 ${FENCE}powershell
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $sinds = 0
+$map = [uri]::EscapeDataString((Get-Location).Path)   # zo komen toestemmingsvragen van deze sessie in deze chat
 while ($true) {
-  $r = curl.exe -s -f -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/wait?since=$sinds&timeout=300&wake=claude&bundle=1&format=text"
+  $r = curl.exe -s -f -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/wait?since=$sinds&timeout=300&wake=claude&bundle=1&format=text&map=$map"
   if ($LASTEXITCODE -eq 22) { 'ClaudeSuite weigert (sleutel of chat klopt niet meer).'; break }
   if ($LASTEXITCODE -ne 0) { Start-Sleep 10; continue }
   if ($r) { $r; break }
@@ -132,4 +133,31 @@ Werk onderwerp.md bij als er iets besloten of afgerond is.
 ## Berichten als JSON
 \`${base}/messages\` zonder \`format=text\` geeft JSON (met \`tags\`, \`file\`, \`id\` voor since en \`number\` voor #).
 `, session);
+}
+
+// The PermissionRequest hook for Claude Code on the person's pc (~/.claude/claudesuite-toestemming.ps1).
+// Only for a session that takes part in a chat: then the question goes to the app and this waits for Yes or No
+// (no answer in time = no). Any other case, or any error: no decision, so Claude Code asks in the terminal as usual.
+export function claudeHook({ address }) {
+    return `# ClaudeSuite: toestemmingsvragen van Claude Code beantwoorden in de app (${address}).
+# Alleen voor een sessie die in een ClaudeSuite-chat meedoet; anders vraagt Claude Code het gewoon in de terminal.
+# Geen antwoord binnen een paar minuten telt als nee. Dit bestand wordt gemaakt door de opdracht bij je Claude-sleutel.
+$ErrorActionPreference = 'Stop'
+try {
+    [Console]::InputEncoding = [Text.Encoding]::UTF8
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    $vraag = [Console]::In.ReadToEnd() | ConvertFrom-Json
+    $sleutel = if ($env:CLAUDESUITE_KEY) { $env:CLAUDESUITE_KEY } else { [Environment]::GetEnvironmentVariable('CLAUDESUITE_KEY', 'User') }
+    if (-not $sleutel) { exit 0 }
+    $h = @{ Authorization = "Bearer $sleutel" }
+    $body = @{ cwd = $vraag.cwd; tool = $vraag.tool_name; input = $vraag.tool_input } | ConvertTo-Json -Depth 20 -Compress
+    $r = Invoke-RestMethod -Method Post -Headers $h -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 '${address}/api/permissions'
+    if (-not $r.connected) { exit 0 }
+    while (-not $r.decision) { $r = Invoke-RestMethod -Headers $h -TimeoutSec 300 "${address}/api/permissions/$($r.id)/wait" }
+    $besluit = if ($r.decision -eq 'allow') { @{ behavior = 'allow' } } else { @{ behavior = 'deny'; message = $r.message } }
+    @{ hookSpecificOutput = @{ hookEventName = 'PermissionRequest'; decision = $besluit } } | ConvertTo-Json -Depth 5 -Compress
+} catch {
+    exit 0
+}
+`;
 }

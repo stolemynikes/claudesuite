@@ -499,3 +499,51 @@ test('several Claude sessions of one person: each its own name, they wake each o
         s.close();
     }
 });
+
+test('permission questions: only for a session in a chat, only its own person answers, the others read along', async () => {
+    const s = await start();
+    try {
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
+        const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
+        const { as: chris } = await invitePerson(s, admin, 'Chris');
+        const { chat } = (await pepijn('POST', '/api/chats', { title: 'Toestemming', members: ['Chris'] })).data;
+        const claudeP = s.claude((await pepijn('POST', '/api/me/claude-key')).data.key);
+        const ask = { cwd: 'C:\\Werk\\Kasper', tool: 'Bash', input: { command: 'npm test', description: 'Tests draaien' } };
+
+        // not listening in a chat: Claude Code asks in the terminal
+        assert.equal((await claudeP('POST', '/api/permissions', ask)).data.connected, false);
+        assert.equal((await pepijn('POST', '/api/permissions', ask)).status, 403);
+        // the listener from the same folder connects this session to the chat (capitals and closing slash do not matter)
+        const last = (await claudeP('GET', `/api/chats/${chat.id}/messages`)).data.messages.at(-1).id;
+        await claudeP('GET', `/api/chats/${chat.id}/wait?since=${last}&timeout=1&wake=claude&map=${encodeURIComponent('c:\\werk\\kasper\\')}`);
+        const asked = (await claudeP('POST', '/api/permissions', ask)).data;
+        assert.equal(asked.connected, true);
+
+        // the person sees it, the others read along in the chat but cannot answer
+        const open = (await pepijn('GET', '/api/permissions')).data.requests;
+        assert.equal(open.length, 1);
+        assert.equal(open[0].text, 'npm test');
+        assert.equal((await chris('GET', '/api/permissions')).data.requests.length, 0);
+        assert.equal((await chris('POST', `/api/permissions/${asked.id}`, { allow: true })).status, 404);
+        const notes = (await chris('GET', `/api/chats/${chat.id}/messages`)).data.messages.map((m) => m.text).join('\n');
+        assert.match(notes, /vraagt Pepijn om toestemming: Bash \(Tests draaien\)\nnpm test/);
+
+        // the answer reaches the waiting hook; answering twice is refused
+        const waiting = claudeP('GET', `/api/permissions/${asked.id}/wait`);
+        await new Promise((r) => setTimeout(r, 100));
+        assert.equal((await pepijn('POST', `/api/permissions/${asked.id}`, { allow: true })).data.decision, 'allow');
+        assert.equal((await waiting).data.decision, 'allow');
+        assert.equal((await pepijn('POST', `/api/permissions/${asked.id}`, { allow: false })).status, 409);
+        assert.equal((await pepijn('GET', '/api/permissions')).data.requests.length, 0);
+
+        // a no comes back with the reason for Claude
+        const second = (await claudeP('POST', '/api/permissions', ask)).data;
+        await pepijn('POST', `/api/permissions/${second.id}`, { allow: false });
+        assert.deepEqual((await claudeP('GET', `/api/permissions/${second.id}/wait`)).data, { id: second.id, decision: 'deny', message: 'Geweigerd in ClaudeSuite door Pepijn.' });
+
+        // the hook script for the pc never contains the key
+        assert.ok(!(await claudeP('GET', '/api/claude-hook.ps1')).data.includes('csk_'));
+    } finally {
+        s.close();
+    }
+});

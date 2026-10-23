@@ -2,7 +2,8 @@ import express from 'express';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { apiGuard, humanOnly, sessionName } from '../suite/guard.js';
-import { claudeDetails, claudeInstructions, claudeSetup } from '../suite/claudeInstructions.js';
+import { claudeDetails, claudeHook, claudeInstructions, claudeSetup } from '../suite/claudeInstructions.js';
+import { createPermissions, ANSWER_MINUTES } from '../suite/permissions.js';
 
 // The chats. People and their Claude (with the person's Claude key) only see the chats they are a member of.
 //
@@ -64,7 +65,8 @@ const safeName = (name) => String(name || '').split(/[\\/]/).pop().replace(/[\u0
 export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     const router = express.Router();
     const guard = apiGuard({ store, sessions });
-    router.use(['/chats', '/chats-changed', '/files', '/claude-setup.md'], guard);
+    router.use(['/chats', '/chats-changed', '/files', '/claude-setup.md', '/permissions', '/claude-hook.ps1'], guard);
+    const permissions = createPermissions();
     const json = express.json({ limit: '300kb' });
     const text = express.text({ limit: '300kb', type: 'text/plain' });
 
@@ -258,6 +260,8 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         if (p) {
             if (!isListening(p)) bump(req.chat.id);
             p.waiting += 1;
+            // map = the folder the session works in: its permission questions then come to this chat
+            if (req.query.map) permissions.connect({ user: req.user, cwd: req.query.map, chatId: req.chat.id, sender: req.sender });
         }
         try {
             while (!wakes(messages) && since > 0 && (tv === null || typingNow(req.chat.id).tv === tv) && Date.now() < until && !res.destroyed) {
@@ -371,6 +375,86 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const address = `${req.protocol}://${req.get('host')}`;
         if (req.query.deel === 'meer') return res.type('text/markdown; charset=utf-8').send(claudeDetails({ address, chat: req.chat, session }));
         res.type('text/markdown; charset=utf-8').send(claudeInstructions({ address, chat: req.chat, name: req.user.name, session, autonomy: store.autonomy(req.chat.id) }));
+    });
+
+    // ---------- permission questions of Claude Code, answered in the app (see suite/permissions.js) ----------
+    //   GET  /api/claude-hook.ps1            the hook script for the person's pc (installed by the command at their key)
+    //   POST /api/permissions                (Claude, from the hook) { cwd, tool, input } -> { connected, id, decision }
+    //   GET  /api/permissions/:pid/wait      (Claude) waits for the answer -> { decision: allow | deny | null, message }
+    //   GET  /api/permissions?seen=<ids>     (person) my open questions; waits until they differ from "seen"
+    //   POST /api/permissions/:pid           (person, only the one whose Claude asks) { allow: true | false }
+    router.get('/claude-hook.ps1', (req, res) => {
+        res.type('text/plain; charset=utf-8').send(claudeHook({ address: `${req.protocol}://${req.get('host')}` }));
+    });
+
+    // What the Claude wants to do, in one readable text
+    function describe(tool, input) {
+        const i = input && typeof input === 'object' ? input : {};
+        const main = tool === 'Bash' || tool === 'PowerShell' ? i.command
+            : ['Edit', 'MultiEdit', 'Write', 'Read', 'NotebookEdit'].includes(tool) ? i.file_path || i.notebook_path
+                : tool === 'WebFetch' ? i.url : null;
+        return { about: clean(i.description, 300), text: clean(main || JSON.stringify(i, null, 1), 4000) };
+    }
+    const asPerson = (r) => {
+        const person = store.user(r.userId);
+        return { chat: store.chat(r.chatId), user: person, isClaude: false, sender: person?.name };
+    };
+    const forPage = (r) => ({ id: r.id, chatId: r.chatId, chatTitle: store.chat(r.chatId)?.title || '', sender: r.sender, tool: r.tool, about: r.about, text: r.text, expires: new Date(r.expires).toISOString() });
+    const denyMessage = (r) => (r.by ? `Geweigerd in ClaudeSuite door ${r.by}.` : `Geen antwoord in ClaudeSuite binnen ${ANSWER_MINUTES} minuten: geweigerd.`);
+    function finish(r, decision, by) {
+        permissions.decide(r, decision, by);
+        const where = asPerson(r);
+        if (where.chat && where.user) {
+            if (by) note(where, `heeft ${r.sender} ${decision === 'allow' ? 'toestemming gegeven' : 'geen toestemming gegeven'}: ${r.tool}`);
+            else note({ ...where, isClaude: true, sender: r.sender }, `kreeg binnen ${ANSWER_MINUTES} minuten geen antwoord op de toestemmingsvraag: geweigerd.`);
+        }
+        waiters.notify(`perm:${r.userId}`, { all: false });
+        waiters.notify(`perm-req:${r.id}`, { all: false });
+    }
+    // No answer in time counts as no
+    const settle = (r) => {
+        if (!r.decision && Date.now() >= r.expires) finish(r, 'deny', '');
+        return r;
+    };
+
+    router.post('/permissions', json, (req, res) => {
+        if (!req.isClaude) return bad(res, 'Dit is alleen voor een Claude.', 403);
+        const link = permissions.connectionOf(req.user, req.body?.cwd);
+        const chat = link && store.chat(link.chatId);
+        // not taking part in a chat: Claude Code asks in the terminal as usual
+        if (!chat || chat.archived || !store.isMember(chat.id, req.user.id)) return res.json({ connected: false });
+        const tool = clean(req.body?.tool, 100) || 'onbekend';
+        const r = permissions.add({ user: req.user, chatId: chat.id, sender: link.sender, tool, ...describe(tool, req.body?.input) });
+        // the others in the chat read along; only the person can answer
+        note({ chat, user: req.user, isClaude: true, sender: link.sender }, `vraagt ${req.user.name} om toestemming: ${tool}${r.about ? ` (${r.about})` : ''}\n${r.text}`);
+        waiters.notify(`perm:${req.user.id}`, { all: false });
+        res.json({ connected: true, id: r.id, decision: null });
+    });
+
+    router.get('/permissions/:pid/wait', async (req, res) => {
+        const r = permissions.get(req.params.pid);
+        if (!req.isClaude || !r || r.userId !== req.user.id) return bad(res, 'Deze vraag bestaat niet.', 404);
+        const until = Math.min(r.expires + 1000, Date.now() + 280_000);
+        while (!settle(r).decision && Date.now() < until && !res.destroyed) await waiters.wait(`perm-req:${r.id}`, (until - Date.now()) / 1000, res);
+        if (res.destroyed) return;
+        res.json({ id: r.id, decision: r.decision, message: r.decision === 'deny' ? denyMessage(r) : '' });
+    });
+
+    router.get('/permissions', humanOnly, async (req, res) => {
+        const seen = String(req.query.seen ?? '');
+        const ids = () => permissions.openFor(req.user.id).map((r) => r.id).sort().join(',');
+        const until = Date.now() + Math.min(Math.max(Number(req.query.timeout) || 0, 0), 300) * 1000;
+        while (req.query.seen !== undefined && ids() === seen && Date.now() < until && !res.destroyed) await waiters.wait(`perm:${req.user.id}`, (until - Date.now()) / 1000, res);
+        if (res.destroyed) return;
+        res.json({ requests: permissions.openFor(req.user.id).map(forPage) });
+    });
+
+    router.post('/permissions/:pid', humanOnly, json, (req, res) => {
+        const r = permissions.get(req.params.pid);
+        if (!r || r.userId !== req.user.id) return bad(res, 'Deze vraag bestaat niet, of is niet aan jou.', 404);
+        if (settle(r).decision) return bad(res, 'Deze vraag is al beantwoord of verlopen.', 409);
+        finish(r, req.body?.allow === true ? 'allow' : 'deny', req.user.name);
+        res.json({ ok: true, decision: r.decision });
     });
 
     // A message, and wake up everyone waiting on this chat
