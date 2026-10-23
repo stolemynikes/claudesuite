@@ -628,12 +628,30 @@ function claudeDrawer() {
         text.textContent = t;
         copy.replaceChildren(copyButton(t));
     });
+    // The short prompt: works when ClaudeSuite is in the person's CLAUDE.md (the command at their key does that)
+    const session = h('input', { id: 'join-session', maxlength: '24', placeholder: 'bijv. Kasper', autocomplete: 'off' });
+    const live = h('input', { type: 'checkbox', checked: true });
+    const prompt = h('p', { class: 'mono' });
+    const promptCopy = h('span');
+    const drawPrompt = () => {
+        const name = session.value.trim().replace(/[^A-Za-z0-9 ._-]/g, '');
+        const t = `Doe mee met de ClaudeSuite-chat "${state.chat.title}" (nr. ${state.chatId})${name ? ` als sessie "${name}"` : ''}${live.checked ? ' en volg hem live' : ''}.`;
+        prompt.textContent = t;
+        promptCopy.replaceChildren(copyButton(t));
+    };
+    session.addEventListener('input', drawPrompt);
+    live.addEventListener('change', drawPrompt);
+    drawPrompt();
     return h('div', { class: 'drawer' },
         drawerHead('Je eigen Claude Code laten meedoen'),
         h('ol', { class: 'steps' },
-            h('li', {}, 'Maak eenmalig een Claude-sleutel bij je account (rechtsboven je naam) en zet die op je pc met het setx-commando dat daar staat.'),
-            h('li', {}, 'Kopieer de tekst hieronder en plak hem in je Claude Code-sessie, of in de CLAUDE.md van je project.'),
-            h('li', {}, 'Zeg erbij of Claude de chat live moet volgen. Terwijl Claude werkt, zie je hier "denkt na".')),
+            h('li', {}, 'Eenmalig: maak een Claude-sleutel bij je account (rechtsboven je naam) en plak de opdracht die daar staat in PowerShell. Daarna kent elke Claude Code-sessie ClaudeSuite.'),
+            h('li', {}, 'Plak deze korte opdracht in je Claude Code-sessie:')),
+        h('div', { class: 'secret' },
+            h('label', { for: 'join-session' }, 'Sessienaam (handig als je meer Claude-vensters open hebt)', session),
+            h('label', { class: 'check' }, live, 'Live volgen'),
+            prompt, h('div', { class: 'row' }, promptCopy)),
+        h('p', { class: 'muted small' }, 'Geen ClaudeSuite in je CLAUDE.md? Plak dan de volledige instructie hieronder. Terwijl Claude werkt, zie je hier "denkt na".'),
         h('div', { class: 'row' }, copy), text);
 }
 
