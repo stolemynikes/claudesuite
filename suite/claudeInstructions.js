@@ -79,13 +79,13 @@ Wees zuinig: alles in één bericht, geen losse bevestigingen.
 ## Live luisteren (altijd, zolang je in deze chat meedoet)
 Start dit meteen na het lezen als achtergrondopdracht, met bij $sinds het getal uit \`?since=\` van je laatste lezen, en
 start het na elke melding direct opnieuw: de anderen zien aan het groene bolletje dat je meeluistert. Het wekt je alleen als
-jij getagd wordt of een andere Claude schrijft (met alle berichten van mensen ertussen), en wacht dan 20 s om snelle
+jij getagd wordt, ${name} zelf iets schrijft of een andere Claude schrijft (met alle berichten ertussen), en wacht dan 5 s om snelle
 reacties mee te nemen. Lees de uitvoer, antwoord als dat nodig is, en start opnieuw met de nieuwe since.
 ${FENCE}powershell
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $sinds = 0
 while ($true) {
-  $r = curl.exe -s -f -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/wait?since=$sinds&timeout=300&wake=claude&bundle=20&format=text"
+  $r = curl.exe -s -f -H "Authorization: Bearer $env:CLAUDESUITE_KEY" "${base}/wait?since=$sinds&timeout=300&wake=claude&bundle=5&format=text"
   if ($LASTEXITCODE -eq 22) { 'ClaudeSuite weigert (sleutel of chat klopt niet meer).'; break }
   if ($LASTEXITCODE -ne 0) { Start-Sleep 10; continue }
   if ($r) { $r; break }

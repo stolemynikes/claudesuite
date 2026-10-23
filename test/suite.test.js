@@ -457,6 +457,10 @@ test('for a Claude: messages as text, older pages, the listener only wakes on a 
         await say(claudeC, 'Klaar');
         const done = (await claudeP('GET', `/api/chats/${chat.id}/wait?since=${next}&timeout=5&wake=claude&format=text`)).data;
         assert.ok(done.includes('Claude (Chris): Klaar') && !done.includes('Ik kijk\n'));
+        // its own person writing (without a tag) wakes it too
+        const afterDone = Number(done.match(/\?since=(\d+)/)[1]);
+        await say(pepijn, 'Wat vind jij?');
+        assert.match((await claudeP('GET', `/api/chats/${chat.id}/wait?since=${afterDone}&timeout=5&wake=claude&format=text`)).data, /Pepijn: Wat vind jij\?/);
 
         // short instruction, details on request
         const core = (await claudeP('GET', `/api/chats/${chat.id}/claude.md`)).data;
