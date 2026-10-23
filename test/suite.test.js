@@ -113,6 +113,10 @@ test('chats: members only, Claude writes as "Claude (name)", Claude cannot manag
         const claudeP = s.claude(key);
         // Claude: chats yes, own account no
         assert.equal((await claudeP('GET', '/api/me')).status, 403);
+        // the person can see the key again, their Claude cannot; not in plain text in the database
+        assert.equal((await pepijn('GET', '/api/me/claude-key')).data.key, key);
+        assert.equal((await claudeP('GET', '/api/me/claude-key')).status, 403);
+        assert.ok(!fs.readFileSync(path.join(path.dirname(s.store.filePath('x')), '..', 'suite.db')).includes(Buffer.from(key)));
         assert.equal((await claudeP('POST', '/api/chats', { title: 'x' })).status, 403);
         assert.equal((await claudeP('GET', '/api/chats')).data.chats.length, 1);
         assert.equal((await s.claude('csk_ditiseenverkeerdesleutel1234')('GET', '/api/chats')).status, 401);

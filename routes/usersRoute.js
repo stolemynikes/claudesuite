@@ -8,7 +8,8 @@ import { ROLES } from '../suite/store.js';
 //   POST   /api/me/password             { current, next } (no current needed when you had no password yet)
 //   POST   /api/me/login-link           a one-time device link, 15 minutes: log in on another device (phone)
 //   DELETE /api/me/login-link
-//   POST   /api/me/claude-key           a new Claude key (shown once; the old one stops working)
+//   POST   /api/me/claude-key           a new Claude key (the old one stops working)
+//   GET    /api/me/claude-key           my current Claude key again
 //   DELETE /api/me/claude-key
 //   GET    /api/users                   names, to add people to a chat
 //   POST   /api/invites { role }        (beheerder) an invite link for a new person
@@ -43,6 +44,8 @@ export function usersRoute({ store, sessions }) {
         res.json({ ok: true });
     });
     router.post('/me/claude-key', (req, res) => res.json({ key: store.newClaudeKey(req.user.id), address: origin(req) }));
+    // Show the key again (only to the person, never to a Claude); never cached by the browser
+    router.get('/me/claude-key', (req, res) => res.set('Cache-Control', 'no-store').json({ key: store.claudeKey(req.user.id) }));
     router.delete('/me/claude-key', (req, res) => {
         store.revokeClaudeKey(req.user.id);
         res.json({ ok: true });

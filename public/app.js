@@ -178,7 +178,7 @@ async function showJoin(secret) {
     }
     const error = h('p', { class: 'error', role: 'alert' });
     const name = h('input', { id: 'join-name', autocomplete: 'username', required: true, maxlength: '30' });
-    const password = h('input', { id: 'join-password', type: 'password', autocomplete: 'new-password', minlength: '12' });
+    const password = h('input', { id: 'join-password', type: 'password', autocomplete: 'new-password' });
     const form = h('form', { class: 'card', onsubmit: async (event) => {
         event.preventDefault();
         try {
@@ -773,9 +773,16 @@ async function showProfile() {
     stopPolling();
     const { user } = await api('/api/me');
     const current = h('input', { id: 'pw-current', type: 'password', autocomplete: 'current-password' });
-    const next = h('input', { id: 'pw-next', type: 'password', autocomplete: 'new-password', minlength: '12' });
+    const next = h('input', { id: 'pw-next', type: 'password', autocomplete: 'new-password' });
     const linkOut = h('div');
     const keyOut = h('div');
+    const showKey = (key) => {
+        const command = `setx CLAUDESUITE_KEY "${key}"; ${setupCommand(`"${key}"`)}`;
+        keyOut.replaceChildren(h('div', { class: 'secret' },
+            h('p', {}, 'Plak dit één keer in PowerShell op je eigen pc en druk op Enter. Het zet je sleutel en zet ClaudeSuite in je CLAUDE.md. Start Claude Code daarna opnieuw.'),
+            h('p', { class: 'mono' }, command), h('div', {}, copyButton(command)),
+            h('p', { class: 'muted' }, 'Plak deze sleutel nooit in een chat.')));
+    };
     const themes = h('div', { class: 'row', role: 'radiogroup', 'aria-label': 'Thema' }, THEMES.map(([id, label]) => h('label', { class: 'check' },
         h('input', { type: 'radio', name: 'theme', value: id, checked: document.documentElement.dataset.theme === id, onchange: () => {
             applyTheme(id);
@@ -814,13 +821,13 @@ async function showProfile() {
             h('p', {}, `Hiermee schrijft jouw Claude Code in je chats als "Claude (${user.name})". Alleen in chats waar jij in zit; nooit je account of uitnodigingen.`),
             h('div', { class: 'row' },
                 action(user.hasClaudeKey ? 'Nieuwe sleutel (de oude stopt)' : 'Claude-sleutel maken', async () => {
-                    const { key } = await api('/api/me/claude-key', { method: 'POST' });
-                    const command = `setx CLAUDESUITE_KEY "${key}"; ${setupCommand(`"${key}"`)}`;
-                    keyOut.replaceChildren(h('div', { class: 'secret' },
-                        h('p', {}, 'Plak dit één keer in PowerShell op je eigen pc en druk op Enter. Het zet je sleutel en zet ClaudeSuite in je CLAUDE.md. Start Claude Code daarna opnieuw.'),
-                        h('p', { class: 'mono' }, command), h('div', {}, copyButton(command)),
-                        h('p', { class: 'muted' }, 'Deze sleutel wordt niet nog eens getoond. Plak hem nooit in een chat.')));
+                    showKey((await api('/api/me/claude-key', { method: 'POST' })).key);
                 }, { kind: 'primary' }),
+                user.hasClaudeKey ? action('Sleutel tonen', async () => {
+                    const { key } = await api('/api/me/claude-key');
+                    if (!key) return keyOut.replaceChildren(h('p', { class: 'muted' }, 'Deze sleutel is gemaakt voordat sleutels bewaard werden. Maak een nieuwe.'));
+                    showKey(key);
+                }) : null,
                 user.hasClaudeKey ? action('Update mijn CLAUDE.md', async () => {
                     const command = setupCommand('$env:CLAUDESUITE_KEY');
                     keyOut.replaceChildren(h('div', { class: 'secret' },

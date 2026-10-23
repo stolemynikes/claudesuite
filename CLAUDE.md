@@ -33,6 +33,7 @@ On Windows PowerShell use `npm.cmd` or `node`.
 
 1. **Office network only.** `officeOnly` refuses every request from outside a private network (Tailscale 100.64.0.0/10 counts as private) or through a proxy/tunnel. No tunnel to this container, never forward port 8082.
 2. **Secrets only as a hash.** Passwords (scrypt), login links, Claude keys and invites are never stored or logged in plain text, and shown once only.
+   Exception (owner's choice): the Claude key is also kept AES-encrypted so its person can see it again (`GET /api/me/claude-key`, never for a Claude). The encryption key is in the same database.
 3. **Members only.** Every chat, message, file and onderwerp.md is only for members of that chat; the same 404 for "does not exist" and "not yours".
 4. **Claude is not a person.** A Claude key can only read and write in the chats of its person; never accounts, keys, invites, new chats or members. Its messages are always marked "Claude (<name>)".
 5. **Files never run as a page.** Only png/jpeg/gif/webp are shown inline; everything else is a download (`application/octet-stream`, `nosniff`). Uploads stream straight to disk with a size limit.

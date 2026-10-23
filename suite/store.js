@@ -56,11 +56,28 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
         db.exec('ALTER TABLE messages ADD COLUMN seq INTEGER');
         db.exec('UPDATE messages SET seq = (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = messages.chat_id AND m2.id <= messages.id)');
     }
+    // The Claude key can be shown again (owner's choice): kept encrypted next to its hash. Older databases get the column once.
+    if (!all('PRAGMA table_info(users)').some((column) => column.name === 'claude_key')) db.exec('ALTER TABLE users ADD COLUMN claude_key TEXT');
     const run = (sql, ...args) => db.prepare(sql).run(...args);
 
     // First start: a random session secret, and the user "Admin" with ADMIN_PASSWORD
     if (!one("SELECT value FROM settings WHERE key = 'sessionSecret'")) run("INSERT INTO settings VALUES ('sessionSecret', ?)", crypto.randomBytes(32).toString('hex'));
     const sessionSecret = one("SELECT value FROM settings WHERE key = 'sessionSecret'").value;
+    // AES-256-GCM for the Claude key. shortcut: the encryption key lives in the same database, so this only keeps the key
+    // out of plain sight; whoever has the whole database has the keys too (the owner accepted that to see a key again).
+    const keyBox = crypto.createHash('sha256').update(`claude-key:${sessionSecret}`).digest();
+    const seal = (text) => {
+        const iv = crypto.randomBytes(12);
+        const cipher = crypto.createCipheriv('aes-256-gcm', keyBox, iv);
+        const data = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+        return [iv, cipher.getAuthTag(), data].map((b) => b.toString('base64url')).join('.');
+    };
+    const unseal = (sealed) => {
+        const [iv, tag, data] = String(sealed).split('.').map((part) => Buffer.from(part, 'base64url'));
+        const decipher = crypto.createDecipheriv('aes-256-gcm', keyBox, iv);
+        decipher.setAuthTag(tag);
+        return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+    };
     if (firstPassword) {
         const admin = one("SELECT id FROM users WHERE name_lower = 'admin'");
         if (!admin) addUser({ name: 'Admin', role: 'admin', password: firstPassword });
@@ -135,11 +152,16 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
         },
         newClaudeKey(id) {
             const secret = newSecret('csk');
-            run('UPDATE users SET claude_hash = ? WHERE id = ?', sha256(secret), Number(id));
+            run('UPDATE users SET claude_hash = ?, claude_key = ? WHERE id = ?', sha256(secret), seal(secret), Number(id));
             return secret;
         },
+        // The current key again ('' when there is none, or it was made before keys were kept)
+        claudeKey(id) {
+            const row = one('SELECT claude_hash, claude_key FROM users WHERE id = ?', Number(id));
+            return row?.claude_hash && row.claude_key ? unseal(row.claude_key) : '';
+        },
         revokeLoginLink: (id) => run('UPDATE users SET login_hash = NULL WHERE id = ?', Number(id)),
-        revokeClaudeKey: (id) => run('UPDATE users SET claude_hash = NULL WHERE id = ?', Number(id)),
+        revokeClaudeKey: (id) => run('UPDATE users SET claude_hash = NULL, claude_key = NULL WHERE id = ?', Number(id)),
         // Used up at once: the same link never works twice
         useLoginLink: (secret) => user(one('UPDATE users SET login_hash = NULL, login_expires = NULL WHERE login_hash = ? AND login_expires > ? RETURNING id', sha256(secret), now())?.id),
         userByClaudeKey: (secret) => user(one('SELECT id FROM users WHERE claude_hash = ?', sha256(secret))?.id),
