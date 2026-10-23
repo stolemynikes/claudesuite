@@ -276,11 +276,11 @@ test('no password: invite only, one-time device link; zelf handelen only when ev
         let auto = (await pepijn('POST', `/api/chats/${chat.id}/autonomy`, { agree: true })).data.autonomy;
         assert.equal(auto.active, false);
         assert.deepEqual(auto.waiting, ['Chris']);
-        assert.match((await claudeP('GET', `/api/chats/${chat.id}/claude.md`)).data, /Zelf handelen \(nu: UIT\)/);
+        assert.match((await claudeP('GET', `/api/chats/${chat.id}/claude.md`)).data, /Zelf handelen: nu UIT/);
         auto = (await chris('POST', `/api/chats/${chat.id}/autonomy`, { agree: true })).data.autonomy;
         assert.equal(auto.active, true);
         assert.equal((await claudeP('GET', `/api/chats/${chat.id}`)).data.autonomy.active, true);
-        assert.match((await claudeP('GET', `/api/chats/${chat.id}/claude.md`)).data, /Zelf handelen \(nu: AAN\)/);
+        assert.match((await claudeP('GET', `/api/chats/${chat.id}/claude.md`)).data, /Zelf handelen: nu AAN/);
         // a new member must agree too
         await pepijn('POST', `/api/chats/${chat.id}/members`, { name: 'Roel' });
         assert.equal((await pepijn('GET', `/api/chats/${chat.id}`)).data.autonomy.active, false);
@@ -390,4 +390,56 @@ test('message numbers count per chat, from 1; an old database gets them once', a
     assert.deepEqual(store.messages(7).map((m) => m.number), [1, 2, 3]);
     assert.deepEqual(store.messages(8).map((m) => m.number), [1, 2]);
     store.close();
+});
+
+test('for a Claude: messages as text, older pages, the listener only wakes on a tag or another Claude, then bundles', async () => {
+    const s = await start();
+    try {
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
+        const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
+        const { as: chris } = await invitePerson(s, admin, 'Chris');
+        const { chat } = (await pepijn('POST', '/api/chats', { title: 'Kasper', members: ['Chris'] })).data;
+        const claudeP = s.claude((await pepijn('POST', '/api/me/claude-key')).data.key);
+        const claudeC = s.claude((await chris('POST', '/api/me/claude-key')).data.key);
+        const say = (who, text) => who('POST', `/api/chats/${chat.id}/messages`, { text });
+
+        await say(chris, 'Regel een\nregel twee');
+        const page = (await claudeP('GET', `/api/chats/${chat.id}/messages?format=text`)).data;
+        assert.match(page, /^# Chat \d+ "Kasper"/);
+        assert.match(page, /#\d+ \d\d:\d\d Chris: Regel een\n {4}regel twee/);
+        const last = Number(page.match(/\?since=(\d+)/)[1]);
+        // older pages: everything before an id
+        const older = (await claudeP('GET', `/api/chats/${chat.id}/messages?format=text&before=${last}`)).data;
+        assert.ok(!older.includes('Regel een') && !older.includes('?since='));
+
+        // a human message without a tag does not wake the listener; a tag does, and both come along
+        const listening = claudeP('GET', `/api/chats/${chat.id}/wait?since=${last}&timeout=20&wake=claude&bundle=1&format=text`);
+        await new Promise((r) => setTimeout(r, 100));
+        await say(chris, 'Gewoon een opmerking');
+        await new Promise((r) => setTimeout(r, 200));
+        await say(chris, '@Claude-Pepijn kun jij kijken?');
+        await new Promise((r) => setTimeout(r, 200));
+        await say(claudeC, 'Ik kijk ook mee');
+        const woke = (await listening).data;
+        assert.match(woke, /Chris: Gewoon een opmerking/);
+        assert.match(woke, /Chris: \[VOOR JOU\] @Claude-Pepijn/);
+        assert.match(woke, /Claude \(Chris\): Ik kijk ook mee/); // bundled
+        // only own messages: no wake-up, and the own Claude's messages are left out
+        const next = Number(woke.match(/\?since=(\d+)/)[1]);
+        await say(claudeP, 'Ik kijk');
+        assert.equal((await claudeP('GET', `/api/chats/${chat.id}/wait?since=${next}&timeout=1&wake=claude&format=text`)).data, '');
+        // another Claude wakes it
+        const again = (await claudeP('GET', `/api/chats/${chat.id}/wait?since=${next}&timeout=5&wake=claude&format=text`));
+        assert.equal(again.data, ''); // still nothing from others
+        await say(claudeC, 'Klaar');
+        const done = (await claudeP('GET', `/api/chats/${chat.id}/wait?since=${next}&timeout=5&wake=claude&format=text`)).data;
+        assert.ok(done.includes('Claude (Chris): Klaar') && !done.includes('Ik kijk\n'));
+
+        // short instruction, details on request
+        const core = (await claudeP('GET', `/api/chats/${chat.id}/claude.md`)).data;
+        assert.ok(core.length < 4500, `core is ${core.length} characters`);
+        assert.match((await claudeP('GET', `/api/chats/${chat.id}/claude.md?deel=meer`)).data, /onderwerp\.md/);
+    } finally {
+        s.close();
+    }
 });

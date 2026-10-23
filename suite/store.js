@@ -237,11 +237,13 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
         },
         // The newest message id in any of this person's chats (the chat list compares it to see if something changed)
         latestFor: (userId) => one('SELECT MAX(m.id) AS id FROM messages m JOIN members x ON x.chat_id = m.chat_id AND x.user_id = ?', Number(userId))?.id || 0,
-        // Messages after id "since" (oldest first); without "since" the last ones
-        messages(chatId, { since = 0, limit = 200 } = {}) {
+        // Messages after id "since" (oldest first); without "since" the last ones, or the ones just before id "before"
+        // (older pages, so the whole history stays readable)
+        messages(chatId, { since = 0, before = 0, limit = 200 } = {}) {
             const max = Math.min(Math.max(Number(limit) || 200, 1), 500);
             if (Number(since) > 0) return withTags(all(`${MESSAGE_SQL} WHERE m.chat_id = ? AND m.id > ? ORDER BY m.id LIMIT ?`, Number(chatId), Number(since), max).map(messageRow));
-            return withTags(all(`${MESSAGE_SQL} WHERE m.chat_id = ? ORDER BY m.id DESC LIMIT ?`, Number(chatId), max).map(messageRow).reverse());
+            const below = Number(before) > 0 ? Number(before) : Number.MAX_SAFE_INTEGER;
+            return withTags(all(`${MESSAGE_SQL} WHERE m.chat_id = ? AND m.id < ? ORDER BY m.id DESC LIMIT ?`, Number(chatId), below, max).map(messageRow).reverse());
         },
 
         // ---------- files ----------

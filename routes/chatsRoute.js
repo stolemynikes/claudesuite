@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { apiGuard, humanOnly } from '../suite/guard.js';
-import { claudeInstructions, claudeSetup } from '../suite/claudeInstructions.js';
+import { claudeDetails, claudeInstructions, claudeSetup } from '../suite/claudeInstructions.js';
 
 // The chats. People and their Claude (with the person's Claude key) only see the chats they are a member of.
 //
@@ -14,10 +14,11 @@ import { claudeInstructions, claudeSetup } from '../suite/claudeInstructions.js'
 //   DELETE /api/chats/:id/members/:userId                                                            (person)
 //   POST   /api/chats/:id/autonomy               { agree: true|false }: "Claudes mogen zelf handelen" (person);
 //                                                  only on when every member agreed, a new member must agree too
-//   GET    /api/chats/:id/messages?since=&limit=
+//   GET    /api/chats/:id/messages?since=&before=&limit=&format=text
 //   POST   /api/chats/:id/messages               JSON { text }, or the plain text as body (text/plain)
 //   GET    /api/chats/:id/wait?since=&tv=&timeout=  waits (max 300 s) until there is a message after "since", or
-//                                                  who is typing changed (tv = the typing version you have)
+//                                                  who is typing changed (tv = the typing version you have);
+//                                                  &wake=claude&bundle=20&format=text for a Claude listener
 //   POST   /api/chats/:id/typing                 { kind: typing | thinking | stop, seconds }: "X is aan het typen",
 //                                                  "Claude (X) denkt na"; ends by itself, or when X posts
 //   POST   /api/chats/:id/files?name=&text=      the file itself as body; becomes a message
@@ -34,6 +35,26 @@ const MAX_DESCRIPTION = 500;
 const MAX_BRIEF = 200_000;
 // Shown in the browser itself; anything else is always a download (an HTML or SVG file never runs as a page)
 const INLINE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+// Messages as plain text for a Claude (?format=text): far fewer tokens than JSON, and still easy to read.
+// "me" is the person whose Claude reads it: messages that tag that Claude get [VOOR JOU].
+const DAY = new Intl.DateTimeFormat('nl-NL', { timeZone: 'Europe/Amsterdam', weekday: 'long', day: 'numeric', month: 'long' });
+const TIME = new Intl.DateTimeFormat('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit' });
+export function asText(messages, { chat, me, next }) {
+    const lines = [`# Chat ${chat.id} "${chat.title}": ${messages.length} bericht${messages.length === 1 ? '' : 'en'}`];
+    if (messages[0]?.number > 1) lines.push(`(oudere berichten: ?before=${messages[0].id})`);
+    let day = '';
+    for (const m of messages) {
+        const at = new Date(m.created);
+        if (DAY.format(at) !== day) lines.push('', `-- ${(day = DAY.format(at))} --`);
+        const forMe = (m.tags || []).some((t) => t.claude && t.name === me) ? ' [VOOR JOU]' : '';
+        const file = m.file ? ` [bestand ${m.file.id}: ${m.file.name}, ${Math.max(1, Math.round(m.file.size / 1024))} kB]` : '';
+        const [first, ...rest] = `${m.text}${file}`.trim().split('\n');
+        lines.push(`#${m.number} ${TIME.format(at)} ${m.isEvent ? `· ${m.sender}` : `${m.sender}:`}${forMe} ${first}`.trimEnd(), ...rest.map((line) => `    ${line}`));
+    }
+    if (next) lines.push('', `(nieuwe berichten: ?since=${next})`);
+    return `${lines.join('\n')}\n`;
+}
 
 const bad = (res, message, status = 400) => res.status(status).json({ message });
 const clean = (value, max) => String(value ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
@@ -195,7 +216,11 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         res.json({ members: store.members(req.chat.id) });
     });
 
-    router.get('/chats/:id/messages', (req, res) => res.json({ messages: store.messages(req.chat.id, { since: req.query.since, limit: req.query.limit }) }));
+    router.get('/chats/:id/messages', (req, res) => {
+        const messages = store.messages(req.chat.id, { since: req.query.since, before: req.query.before, limit: req.query.limit });
+        if (req.query.format !== 'text') return res.json({ messages });
+        res.type('text/plain; charset=utf-8').send(asText(messages, { chat: req.chat, me: req.user.name, next: req.query.before ? 0 : messages.at(-1)?.id || req.query.since }));
+    });
 
     router.post('/chats/:id/messages', open, json, text, (req, res) => {
         const body = typeof req.body === 'string' ? req.body : req.body?.text;
@@ -216,7 +241,17 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         // Without tv the asker does not care about typing (a Claude listener): only messages wake it up
         const tv = req.query.tv === undefined ? null : Number(req.query.tv) || 0;
         const until = Date.now() + Math.min(Math.max(Number(req.query.timeout) || 60, 1), 300) * 1000;
-        let messages = store.messages(req.chat.id, { since });
+        // wake=claude (a Claude listener): only a message that tags this Claude, or one of another Claude, wakes it up;
+        // the human messages in between come along. bundle=20: then wait 20 s more, so a quick reply comes in the same go.
+        const mine = `Claude (${req.user.name})`;
+        const wakeOnTags = req.query.wake === 'claude';
+        const bundle = Math.min(Math.max(Number(req.query.bundle) || 0, 0), 60);
+        const wakes = (list) => (wakeOnTags
+            ? list.some((m) => m.sender !== mine && !m.isEvent && (m.isClaude || (m.tags || []).some((t) => t.claude && t.name === req.user.name)))
+            : list.length > 0);
+        // shortcut: a listener sees at most 500 messages since its last wake-up; more in between would hide a tag after them
+        const limit = wakeOnTags ? 500 : 200;
+        let messages = store.messages(req.chat.id, { since, limit });
         // A Claude that waits here is "listening live" (the others see its icon turn green)
         const p = req.isClaude ? presenceOf(req.chat.id, req.user.id) : null;
         if (p) {
@@ -224,14 +259,24 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
             p.waiting += 1;
         }
         try {
-            while (!messages.length && since > 0 && (tv === null || typingNow(req.chat.id).tv === tv) && Date.now() < until && !res.destroyed) {
+            while (!wakes(messages) && since > 0 && (tv === null || typingNow(req.chat.id).tv === tv) && Date.now() < until && !res.destroyed) {
                 await waiters.wait(req.chat.id, (until - Date.now()) / 1000, res);
-                messages = store.messages(req.chat.id, { since });
+                messages = store.messages(req.chat.id, { since, limit });
+            }
+            if (bundle && wakes(messages) && !res.destroyed) {
+                await new Promise((resolve) => setTimeout(resolve, bundle * 1000));
+                messages = store.messages(req.chat.id, { since, limit });
             }
         } finally {
             if (p) Object.assign(p, { waiting: p.waiting - 1, waitEnded: Date.now() });
         }
-        if (!res.writableEnded && !res.destroyed) res.json({ messages, ...typingNow(req.chat.id) });
+        // Nothing woke the listener: send nothing, so the messages so far come along next time
+        if (!wakes(messages)) messages = [];
+        if (res.writableEnded || res.destroyed) return;
+        if (req.query.format !== 'text') return res.json({ messages, ...typingNow(req.chat.id) });
+        // A Claude knows what it wrote itself
+        const others = messages.filter((m) => m.sender !== mine);
+        res.type('text/plain; charset=utf-8').send(others.length ? asText(others, { chat: req.chat, me: req.user.name, next: messages.at(-1).id }) : '');
     });
 
     router.post('/chats/:id/typing', open, json, (req, res) => {
@@ -319,6 +364,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     });
 
     router.get('/chats/:id/claude.md', (req, res) => {
+        if (req.query.deel === 'meer') return res.type('text/markdown; charset=utf-8').send(claudeDetails({ address: `${req.protocol}://${req.get('host')}`, chat: req.chat }));
         res.type('text/markdown; charset=utf-8').send(claudeInstructions({ address: `${req.protocol}://${req.get('host')}`, chat: req.chat, name: req.user.name, autonomy: store.autonomy(req.chat.id) }));
     });
 
