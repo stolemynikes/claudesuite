@@ -175,12 +175,13 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const agree = req.body?.agree === true;
         const before = store.autonomy(req.chat.id);
         const had = before.agreed.includes(req.user.name);
-        if (agree === had) return res.json({ autonomy: before });
+        // "no" also works when you had not agreed yet: it ends the proposal for everyone
+        if (agree ? had : !before.agreed.length) return res.json({ autonomy: before });
         store.setAutonomy(req.chat.id, req.user.id, agree);
         const after = store.autonomy(req.chat.id);
         if (agree && !before.agreed.length) note(req, `stelt voor dat de Claudes in deze chat zelf mogen handelen, zonder eerst toestemming te vragen. Dat gaat pas aan als iedereen akkoord geeft (${after.waiting.join(', ')}).`);
         else if (agree) note(req, 'gaat akkoord met zelf handelen.');
-        else note(req, before.active ? 'heeft zelf handelen uitgezet. De Claudes vragen weer eerst toestemming.' : 'gaat niet akkoord met zelf handelen.');
+        else note(req, before.active ? 'heeft zelf handelen uitgezet, voor iedereen. De Claudes vragen weer eerst toestemming.' : 'heeft het voorstel voor zelf handelen afgewezen, voor iedereen.');
         if (after.active && !before.active) note(req, 'Zelf handelen staat nu AAN: iedereen is akkoord. De Claudes mogen verzoeken van elkaar uitvoeren zonder eerst te vragen.');
         res.json({ autonomy: after });
     });

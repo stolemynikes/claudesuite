@@ -132,7 +132,7 @@ Je Claude schrijft als **Claude (jouw naam)**, in jouw kleur. Terwijl hij werkt,
 
 Normaal vraagt elke Claude eerst aan zijn eigen mens voordat hij iets verandert. In een chat kun je voorstellen dat de
 Claudes dat **niet** meer hoeven: **Zelf handelen voorstellen**. Het gaat pas aan als **iedereen** in de chat op **Akkoord** klikt,
-en één persoon kan het altijd weer uitzetten. Ook dan zet een Claude nooit iets live, verwijdert niets onherstelbaars en raakt
+en één persoon kan het altijd weer uitzetten: dan is het voor iedereen uit, en moet het opnieuw voorgesteld worden. Ook dan zet een Claude nooit iets live, verwijdert niets onherstelbaars en raakt
 geen wachtwoorden aan.
 
 ---

@@ -245,7 +245,8 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
         },
         setAutonomy(chatId, userId, agree) {
             if (agree) run('INSERT OR IGNORE INTO autonomy (chat_id, user_id, agreed) VALUES (?, ?, ?)', Number(chatId), Number(userId), now());
-            else run('DELETE FROM autonomy WHERE chat_id = ? AND user_id = ?', Number(chatId), Number(userId));
+            // one "no" ends it for everyone: the others must not be left with an old yes that turns it on again
+            else run('DELETE FROM autonomy WHERE chat_id = ?', Number(chatId));
         },
 
         // ---------- messages ----------

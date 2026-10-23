@@ -378,7 +378,10 @@ function drawChat() {
                 showMain(c.id);
             })));
     const bottom = state.drawer === 'brief' ? briefDrawer() : state.drawer === 'members' ? membersDrawer() : state.drawer === 'claude' ? claudeDrawer() : composer();
+    // Moving the messages back in resets their scroll position: keep the same distance from the bottom
+    const fromBottom = messagesEl.scrollHeight - messagesEl.scrollTop;
     chatEl.replaceChildren(head, messagesEl, bottom);
+    messagesEl.scrollTop = messagesEl.scrollHeight - fromBottom;
     drawPeople();
 }
 

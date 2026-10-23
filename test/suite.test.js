@@ -306,6 +306,12 @@ test('no password: invite only, one-time device link; zelf handelen only when ev
         // one person says no: off
         await chris('POST', `/api/chats/${chat.id}/autonomy`, { agree: false });
         assert.equal((await pepijn('GET', `/api/chats/${chat.id}`)).data.autonomy.active, false);
+        // ...for everyone: no old yes stays behind, so one new yes does not turn it back on
+        assert.deepEqual((await pepijn('GET', `/api/chats/${chat.id}`)).data.autonomy.agreed, []);
+        // a "no" to a fresh proposal also ends it for everyone, also from someone who had not agreed yet
+        await pepijn('POST', `/api/chats/${chat.id}/autonomy`, { agree: true });
+        await roel('POST', `/api/chats/${chat.id}/autonomy`, { agree: false });
+        assert.deepEqual((await pepijn('GET', `/api/chats/${chat.id}`)).data.autonomy.agreed, []);
         const events = (await pepijn('GET', `/api/chats/${chat.id}/messages`)).data.messages.filter((m) => m.isEvent).map((m) => m.text).join('\n');
         assert.match(events, /stelt voor dat de Claudes/);
         assert.match(events, /staat nu AAN/);
