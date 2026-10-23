@@ -137,7 +137,8 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
         checkPassword: (id, password) => verifyPassword(password, one('SELECT password_hash FROM users WHERE id = ?', Number(id))?.password_hash || DUMMY_HASH),
         // A new password ends every other login of this user
         setPassword: (id, password) => run('UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?', hashPassword(password), Number(id)),
-        setRole: (id, role) => run('UPDATE users SET role = ?, session_version = session_version + 1 WHERE id = ?', role, Number(id)),
+        // The role is read on every request, so it counts at once; no logout (someone without a password would be locked out)
+        setRole: (id, role) => run('UPDATE users SET role = ? WHERE id = ?', role, Number(id)),
         removeUser(id) {
             run('DELETE FROM members WHERE user_id = ?', Number(id));
             run('DELETE FROM autonomy WHERE user_id = ?', Number(id));

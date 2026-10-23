@@ -71,6 +71,12 @@ test('accounts: invite once, login link, wrong tries blocked, no secrets in the 
         assert.equal((await pepijn('GET', '/api/me')).data.user.name, 'Pepijn');
         // a member cannot invite or see roles
         assert.equal((await pepijn('POST', '/api/invites', { role: 'admin' })).status, 403);
+        // a new role counts at once, without logging out
+        const pepijnId = (await pepijn('GET', '/api/me')).data.user.id;
+        assert.equal((await admin('PATCH', `/api/users/${pepijnId}`, { role: 'admin' })).status, 200);
+        assert.equal((await pepijn('GET', '/api/invites')).status, 200);
+        await admin('PATCH', `/api/users/${pepijnId}`, { role: 'member' });
+        assert.equal((await pepijn('GET', '/api/invites')).status, 403);
         assert.equal((await pepijn('GET', '/api/users')).data.users[0].role, undefined);
         // changes need the X-Suite header (no CSRF)
         assert.equal((await pepijn('POST', '/api/me/login-link', undefined, { 'x-suite': '' })).status, 403);
