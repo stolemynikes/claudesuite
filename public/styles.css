@@ -327,3 +327,60 @@ td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--rule
 .claude-badge.live::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: ping 2s ease-out infinite; }
 .msg-head .claude-icon { width: 13px; height: 13px; color: var(--claude); align-self: center; }
 @keyframes ping { 0% { transform: scale(0.8); opacity: 0.7; } 100% { transform: scale(1.8); opacity: 0; } }
+
+/* ---------- theme "Hackerman": green on black, neon glow, CRT scanlines ---------- */
+:root[data-theme="hackerman"] {
+  --bg: #000300; --surface: #020a03; --surface-2: #041407; --surface-3: #072010; --ink: #39ff7a; --muted: #1fae55;
+  --rule: #0b3d1c; --rule-strong: #16682f; --accent: #39ff7a; --accent-ink: #001a07; --person: #7dffb0;
+  --mine: rgba(57, 255, 122, 0.10); --mine-edge: #39ff7a; --claude: #00e5ff; --claude-soft: rgba(0, 229, 255, 0.07); --claude-edge: rgba(0, 229, 255, 0.45);
+  --bad: #ff3b6b; --ok: #39ff7a; --name-l: 66%; --name-s: 100%; --avatar-l: 14%; --avatar-ink-l: 70%;
+  --radius: 0px; --radius-sm: 0px; --font-body: var(--font-mono);
+}
+:root[data-theme="hackerman"] body { text-shadow: 0 0 6px rgba(57, 255, 122, 0.45); }
+:root[data-theme="hackerman"] body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 10;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.28) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.55) 100%); }
+:root[data-theme="hackerman"] .btn, :root[data-theme="hackerman"] input, :root[data-theme="hackerman"] textarea, :root[data-theme="hackerman"] select { border-radius: 0; text-transform: none; }
+:root[data-theme="hackerman"] .btn.primary { box-shadow: 0 0 12px rgba(57, 255, 122, 0.6); text-shadow: none; }
+:root[data-theme="hackerman"] .msg, :root[data-theme="hackerman"] .card, :root[data-theme="hackerman"] .chat-item[aria-current="true"] { box-shadow: 0 0 0 1px var(--rule-strong), 0 0 14px rgba(57, 255, 122, 0.12) inset; }
+:root[data-theme="hackerman"] .msg.claude { box-shadow: 0 0 0 1px var(--claude-edge), 0 0 14px rgba(0, 229, 255, 0.10) inset; text-shadow: 0 0 6px rgba(0, 229, 255, 0.4); color: #b8f7ff; }
+:root[data-theme="hackerman"] .msg-head b::before { content: "> "; }
+:root[data-theme="hackerman"] .composer textarea::placeholder { color: var(--muted); }
+:root[data-theme="hackerman"] .composer textarea { caret-color: var(--accent); }
+:root[data-theme="hackerman"] .logo { background: #000; color: var(--accent); border-color: var(--accent); box-shadow: 0 0 10px rgba(57, 255, 122, 0.6); }
+:root[data-theme="hackerman"] .avatar { border-radius: 0; }
+
+/* ---------- theme "Shell": the blue PowerShell window ---------- */
+:root[data-theme="shell"] {
+  --bg: #012456; --surface: #01214d; --surface-2: #023070; --surface-3: #0a3d85; --ink: #eeedf0; --muted: #a9c1e6;
+  --rule: #0b3a7a; --rule-strong: #2457a3; --accent: #f9f1a5; --accent-ink: #012456; --person: #f9f1a5;
+  --mine: rgba(249, 241, 165, 0.12); --mine-edge: rgba(249, 241, 165, 0.5); --claude: #61d6d6; --claude-soft: rgba(97, 214, 214, 0.10); --claude-edge: rgba(97, 214, 214, 0.45);
+  --bad: #ff8080; --ok: #16c60c; --name-l: 74%; --name-s: 85%; --avatar-l: 28%; --avatar-ink-l: 90%;
+  --radius: 2px; --radius-sm: 2px; --font-body: "Cascadia Mono", Consolas, "Lucida Console", monospace;
+}
+:root[data-theme="shell"] .top { background: #ffffff; color: #000; border-bottom-color: #c0c0c0; }
+:root[data-theme="shell"] .top .btn.ghost { color: #000; }
+:root[data-theme="shell"] .top .btn.ghost:hover { background: #e5e5e5; }
+:root[data-theme="shell"] .msg-head b::before { content: "PS> "; color: var(--muted); font-weight: 400; }
+:root[data-theme="shell"] .msg.claude .msg-head b::before { content: "PS C:\\> "; }
+:root[data-theme="shell"] .composer textarea { caret-color: #eeedf0; }
+
+/* ---------- theme "VS Code": Dark+ ---------- */
+:root[data-theme="vscode"] {
+  --bg: #1e1e1e; --surface: #252526; --surface-2: #2d2d2d; --surface-3: #37373d; --ink: #d4d4d4; --muted: #9d9d9d;
+  --rule: #3c3c3c; --rule-strong: #464647; --accent: #007acc; --accent-ink: #ffffff; --person: #9cdcfe;
+  --mine: #264f78; --mine-edge: #3a6ea5; --claude: #ce9178; --claude-soft: rgba(206, 145, 120, 0.10); --claude-edge: rgba(206, 145, 120, 0.35);
+  --bad: #f48771; --ok: #89d185; --name-l: 72%; --name-s: 70%; --avatar-l: 30%; --avatar-ink-l: 88%;
+  --radius: 4px; --radius-sm: 3px; --font-body: "Segoe UI", system-ui, sans-serif;
+}
+:root[data-theme="vscode"] .top { background: #3c3c3c; border-bottom-color: #2b2b2b; }
+:root[data-theme="vscode"] .side { background: #252526; }
+:root[data-theme="vscode"] .chat-head { background: #1e1e1e; box-shadow: inset 0 -1px 0 #2b2b2b; }
+:root[data-theme="vscode"] .chat-item[aria-current="true"] { background: #37373d; box-shadow: inset 2px 0 0 #007acc; }
+:root[data-theme="vscode"] .msg { font-size: 15px; }
+:root[data-theme="vscode"] .msg-body { font-family: var(--font-mono); font-size: 14px; }
+:root[data-theme="vscode"] .mention { color: #c586c0; }
+:root[data-theme="vscode"] .btn.primary { background: #0e639c; border-color: #0e639c; }
+:root[data-theme="vscode"] .btn.primary:hover { background: #1177bb; border-color: #1177bb; }
+:root[data-theme="vscode"] .composer { background: #1e1e1e; }
+:root[data-theme="vscode"] .composer::after { content: "ClaudeSuite  ·  UTF-8  ·  CRLF"; display: block; margin: 6px -12px -10px; padding: 2px 12px;
+  background: #007acc; color: #fff; font-size: 12px; }

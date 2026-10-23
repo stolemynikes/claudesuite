@@ -675,7 +675,7 @@ function watchChatList() {
 
 // The look of the page, per device (kept in this browser only)
 // Glas (dark frosted glass) is the default
-const THEMES = [['glas', 'Glas'], ['nacht', 'Nacht'], ['grafiet', 'Grafiet'], ['licht', 'Licht'], ['terminal', 'Terminal']];
+const THEMES = [['glas', 'Glas'], ['nacht', 'Nacht'], ['grafiet', 'Grafiet'], ['licht', 'Licht'], ['terminal', 'Terminal'], ['hackerman', 'Hackerman'], ['shell', 'Shell'], ['vscode', 'VS Code']];
 function applyTheme(name) {
     document.documentElement.dataset.theme = THEMES.some(([id]) => id === name) ? name : 'glas';
 }
