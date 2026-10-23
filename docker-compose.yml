@@ -1,0 +1,25 @@
+# ClaudeSuite on the Synology NAS. Container Manager -> Project -> Create -> choose this folder (with .env next to it).
+#
+# Only for the office network: port 8082 is opened on the NAS, NEVER forward it in the router,
+# and no tunnel goes to this container.
+
+services:
+  claudesuite:
+    # The image GitHub builds after a push to the branch release. build: . only when building here yourself.
+    image: ghcr.io/stolemynikes/claudesuite:release
+    build: .
+    container_name: claudesuite
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 8082
+      DATA_DIR: /app/data
+      TZ: Europe/Amsterdam
+    ports:
+      - "8082:8082"
+    volumes:
+      # The database and the shared files
+      - claudesuite-data:/app/data
+
+volumes:
+  claudesuite-data:

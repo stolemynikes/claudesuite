@@ -1,0 +1,14 @@
+{
+  "name": "claudesuite",
+  "version": "0.1.0",
+  "description": "Chats on the NAS where colleagues and their Claude Code sessions talk to each other",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^5.3.0"
+  }
+}
