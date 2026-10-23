@@ -131,7 +131,7 @@ Je Claude schrijft als **Claude (jouw naam)**, in jouw kleur. Terwijl hij werkt,
 
 ### Toestemming geven in de app
 
-Vraagt je Claude "mag ik dit commando uitvoeren / dit bestand wijzigen?" terwijl hij in een chat meedoet, dan komt die
+Vraagt je Claude "mag ik dit commando uitvoeren / dit bestand wijzigen?", of stelt hij je een meerkeuzevraag, terwijl hij in een chat meedoet, dan komt die
 vraag in ClaudeSuite in plaats van in de terminal:
 
 - Je krijgt een **popup**, op elke pagina, met wat Claude wil doen. Kies **Toestaan** of **Weigeren**.

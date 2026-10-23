@@ -22,11 +22,11 @@ export function createPermissions() {
             const found = connections.get(key(user.id, cwd));
             return found && Date.now() - found.at < CONNECTED_MS ? found : null;
         },
-        add({ user, chatId, sender, tool, about, text }) {
+        add({ user, chatId, sender, tool, about, text, questions = null }) {
             // old answered or expired questions go, so the map stays small
             for (const [id, r] of requests) if (Date.now() - r.expires > CONNECTED_MS) requests.delete(id);
             const request = {
-                id: crypto.randomBytes(12).toString('hex'), userId: user.id, chatId, sender, tool, about, text,
+                id: crypto.randomBytes(12).toString('hex'), userId: user.id, chatId, sender, tool, about, text, questions, answers: null,
                 created: Date.now(), expires: Date.now() + ANSWER_MINUTES * 60_000, decision: null, by: '',
             };
             requests.set(request.id, request);

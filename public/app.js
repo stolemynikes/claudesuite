@@ -721,7 +721,7 @@ function watchChatList() {
 // A popup on every page. "Later" hides it without answering; the bar at the top brings it back.
 // No answer before the time is up counts as no (the server decides that, the page only shows it).
 
-const perm = { list: [], index: 0, open: false, hidden: new Set(), timer: null };
+const perm = { list: [], index: 0, open: false, hidden: new Set(), timer: null, drafts: {} };
 const permBar = h('button', { class: 'perm-bar', type: 'button', hidden: true, onclick: () => showPermission(0) });
 const permLayer = h('div', { class: 'perm-layer', hidden: true });
 document.body.append(permBar, permLayer);
@@ -735,7 +735,7 @@ const TOOL_LABELS = { Bash: 'Een commando uitvoeren', PowerShell: 'Een commando 
 function drawPermissions() {
     const count = perm.list.length;
     permBar.hidden = !count || perm.open;
-    permBar.replaceChildren(icon('spark'), `${count} toestemmingsvraag${count === 1 ? '' : 'en'} van je Claude wacht${count === 1 ? '' : 'en'} op je`, h('span', { class: 'perm-bar-open' }, 'Bekijken'));
+    permBar.replaceChildren(icon('spark'), `${count} vra${count === 1 ? 'ag' : 'gen'} van je Claude wacht${count === 1 ? '' : 'en'} op je`, h('span', { class: 'perm-bar-open' }, 'Bekijken'));
     if (perm.open && !count) hidePermission();
     else if (perm.open) drawPermissionDialog();
     // a new question opens by itself (one you put away with "Later" does not)
@@ -774,24 +774,71 @@ function drawPermissionDialog() {
     const r = perm.list[perm.index];
     if (!r) return hidePermission();
     drawCountdown();
-    const answer = (allow) => action(allow ? 'Toestaan' : 'Weigeren', async () => {
-        await api(`/api/permissions/${r.id}`, { method: 'POST', body: { allow } });
+    const isQuestion = Boolean(r.questions);
+    const draft = perm.drafts[r.id] ||= r.questions?.map(() => ({ chosen: [], other: '' })) || [];
+    const answer = (allow) => action(isQuestion ? (allow ? 'Antwoord sturen' : 'Niet beantwoorden') : (allow ? 'Toestaan' : 'Weigeren'), async () => {
+        // per question: the chosen labels, plus own text under "Anders"
+        const answers = isQuestion ? Object.fromEntries(r.questions.map((q, i) => [q.question, [...draft[i].chosen, draft[i].other.trim()].filter(Boolean)])) : undefined;
+        await api(`/api/permissions/${r.id}`, { method: 'POST', body: { allow, answers } });
+        delete perm.drafts[r.id];
         perm.list = perm.list.filter((x) => x.id !== r.id);
         perm.index = Math.min(perm.index, perm.list.length - 1);
         drawPermissions();
     }, { kind: allow ? 'primary perm-allow' : 'danger' });
     const card = h('div', { class: 'perm-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'perm-title' },
-        h('div', { class: 'perm-head' }, icon('spark'), h('h2', { id: 'perm-title' }, 'Je Claude vraagt toestemming'),
+        h('div', { class: 'perm-head' }, icon('spark'), h('h2', { id: 'perm-title' }, isQuestion ? 'Je Claude stelt een vraag' : 'Je Claude vraagt toestemming'),
             perm.list.length > 1 ? h('span', { class: 'muted small' }, `${perm.index + 1} van ${perm.list.length}`) : null),
-        h('p', {}, h('b', {}, r.sender), ` in chat "${r.chatTitle}" wil:`),
-        h('p', { class: 'perm-what' }, TOOL_LABELS[r.tool] || `${r.tool} gebruiken`, r.about ? h('span', { class: 'muted' }, ` (${r.about})`) : null),
-        h('pre', { class: 'perm-text' }, r.text),
+        h('p', {}, h('b', {}, r.sender), ` in chat "${r.chatTitle}" ${isQuestion ? 'vraagt:' : 'wil:'}`),
+        isQuestion ? r.questions.map((q, i) => questionBlock(r.id, q, i, draft[i])) : [
+            h('p', { class: 'perm-what' }, TOOL_LABELS[r.tool] || `${r.tool} gebruiken`, r.about ? h('span', { class: 'muted' }, ` (${r.about})`) : null),
+            h('pre', { class: 'perm-text' }, r.text)],
         permCountdown,
         h('div', { class: 'row perm-actions' }, answer(true), answer(false),
             h('button', { class: 'btn ghost', type: 'button', onclick: hidePermission }, 'Later'),
             perm.list.length > 1 ? h('button', { class: 'btn ghost', type: 'button', onclick: () => showPermission((perm.index + 1) % perm.list.length) }, 'Volgende') : null),
         h('p', { class: 'muted small' }, 'Later: de vraag blijft open, je vindt hem terug in het balkje bovenaan. De anderen in de chat zien de vraag en je antwoord.'));
     permLayer.replaceChildren(h('div', { class: 'perm-backdrop', onclick: hidePermission }), card);
+}
+
+// One multiple choice question: round buttons (one answer) or check boxes (several), and "Anders" for own text
+function questionBlock(id, q, i, draft) {
+    const name = `perm-${id}-${i}`;
+    const choose = (label, on) => {
+        if (q.multiSelect) draft.chosen = on ? [...new Set([...draft.chosen, label])] : draft.chosen.filter((x) => x !== label);
+        else {
+            draft.chosen = on ? [label] : [];
+            if (on) { draft.other = ''; other.value = ''; }
+        }
+    };
+    const other = h('input', { type: 'text', maxlength: '500', placeholder: 'Anders, namelijk…', 'aria-label': `Eigen antwoord: ${q.question}`, value: draft.other,
+        oninput: () => {
+            draft.other = other.value;
+            // one answer: typing your own text replaces the chosen option
+            if (!q.multiSelect && other.value.trim()) {
+                draft.chosen = [];
+                for (const box of fieldset.querySelectorAll('input[type=radio]')) box.checked = false;
+            }
+        } });
+    // Some options come with a preview (a small sketch or code): shown for the option you point at or chose, as text
+    const hasPreview = q.options.some((o) => o.preview);
+    const preview = h('pre', { class: 'perm-preview', 'aria-live': 'polite' });
+    const showPreview = (label) => {
+        const option = q.options.find((o) => o.label === label) || q.options.find((o) => draft.chosen.includes(o.label)) || q.options.find((o) => o.preview);
+        preview.textContent = option?.preview ? `${option.label}\n\n${option.preview}` : `${option?.label || ''}: geen voorbeeld`;
+    };
+    const fieldset = h('fieldset', { class: 'perm-question' },
+        h('legend', {}, q.header ? h('span', { class: 'perm-chip' }, q.header) : null, q.question),
+        q.multiSelect ? h('p', { class: 'muted small' }, 'Je kunt meer dan één antwoord kiezen.') : null,
+        q.options.map((o) => h('label', { class: 'perm-option', onmouseenter: () => hasPreview && showPreview(o.label), onfocusin: () => hasPreview && showPreview(o.label) },
+            h('input', { type: q.multiSelect ? 'checkbox' : 'radio', name, checked: draft.chosen.includes(o.label), onchange: (event) => {
+                choose(o.label, event.target.checked);
+                if (hasPreview) showPreview(o.label);
+            } }),
+            h('span', {}, h('b', {}, o.label), o.description ? h('span', { class: 'muted small' }, o.description) : null))),
+        hasPreview ? preview : null,
+        other);
+    if (hasPreview) showPreview();
+    return fieldset;
 }
 
 let permWatcher = null;

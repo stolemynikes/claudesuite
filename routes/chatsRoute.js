@@ -387,9 +387,19 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         res.type('text/plain; charset=utf-8').send(claudeHook({ address: `${req.protocol}://${req.get('host')}` }));
     });
 
+    // Claude's multiple choice questions (AskUserQuestion): 1-4 questions with 2-4 options, kept to what the page shows
+    const questionsOf = (input) => (Array.isArray(input?.questions) ? input.questions : []).slice(0, 4).map((q) => ({
+        question: clean(q?.question, 500), header: clean(q?.header, 40), multiSelect: q?.multiSelect === true,
+        options: (Array.isArray(q?.options) ? q.options : []).slice(0, 6).map((o) => ({ label: clean(o?.label, 120), description: clean(o?.description, 400), preview: clean(o?.preview, 4000) })),
+    })).filter((q) => q.question);
+
     // What the Claude wants to do, in one readable text
     function describe(tool, input) {
         const i = input && typeof input === 'object' ? input : {};
+        if (tool === 'AskUserQuestion') {
+            const questions = questionsOf(i);
+            return { about: '', questions, text: clean(questions.map((q) => `${q.question} (${q.options.map((o) => o.label).join(' / ')})`).join('\n'), 4000) };
+        }
         const main = tool === 'Bash' || tool === 'PowerShell' ? i.command
             : ['Edit', 'MultiEdit', 'Write', 'Read', 'NotebookEdit'].includes(tool) ? i.file_path || i.notebook_path
                 : tool === 'WebFetch' ? i.url : null;
@@ -399,13 +409,16 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const person = store.user(r.userId);
         return { chat: store.chat(r.chatId), user: person, isClaude: false, sender: person?.name };
     };
-    const forPage = (r) => ({ id: r.id, chatId: r.chatId, chatTitle: store.chat(r.chatId)?.title || '', sender: r.sender, tool: r.tool, about: r.about, text: r.text, expires: new Date(r.expires).toISOString() });
-    const denyMessage = (r) => (r.by ? `Geweigerd in ClaudeSuite door ${r.by}.` : `Geen antwoord in ClaudeSuite binnen ${ANSWER_MINUTES} minuten: geweigerd.`);
+    const forPage = (r) => ({ id: r.id, chatId: r.chatId, chatTitle: store.chat(r.chatId)?.title || '', sender: r.sender, tool: r.tool, about: r.about, text: r.text, questions: r.questions || null, expires: new Date(r.expires).toISOString() });
+    const denyMessage = (r) => (!r.by ? `Geen antwoord in ClaudeSuite binnen ${ANSWER_MINUTES} minuten: geweigerd.`
+        : r.questions ? `${r.by} wilde de vraag niet beantwoorden in ClaudeSuite.` : `Geweigerd in ClaudeSuite door ${r.by}.`);
+    const answerText = (r) => Object.entries(r.answers || {}).map(([q, a]) => `${q} → ${[a].flat().join(', ')}`).join('\n');
     function finish(r, decision, by) {
         permissions.decide(r, decision, by);
         const where = asPerson(r);
         if (where.chat && where.user) {
-            if (by) note(where, `heeft ${r.sender} ${decision === 'allow' ? 'toestemming gegeven' : 'geen toestemming gegeven'}: ${r.tool}`);
+            if (by && r.questions) note(where, decision === 'allow' ? `heeft ${r.sender} geantwoord:\n${answerText(r)}` : `wilde de vraag van ${r.sender} niet beantwoorden.`);
+            else if (by) note(where, `heeft ${r.sender} ${decision === 'allow' ? 'toestemming gegeven' : 'geen toestemming gegeven'}: ${r.tool}`);
             else note({ ...where, isClaude: true, sender: r.sender }, `kreeg binnen ${ANSWER_MINUTES} minuten geen antwoord op de toestemmingsvraag: geweigerd.`);
         }
         waiters.notify(`perm:${r.userId}`, { all: false });
@@ -426,7 +439,9 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const tool = clean(req.body?.tool, 100) || 'onbekend';
         const r = permissions.add({ user: req.user, chatId: chat.id, sender: link.sender, tool, ...describe(tool, req.body?.input) });
         // the others in the chat read along; only the person can answer
-        note({ chat, user: req.user, isClaude: true, sender: link.sender }, `vraagt ${req.user.name} om toestemming: ${tool}${r.about ? ` (${r.about})` : ''}\n${r.text}`);
+        note({ chat, user: req.user, isClaude: true, sender: link.sender }, r.questions
+            ? `stelt ${req.user.name} een vraag:\n${r.text}`
+            : `vraagt ${req.user.name} om toestemming: ${tool}${r.about ? ` (${r.about})` : ''}\n${r.text}`);
         waiters.notify(`perm:${req.user.id}`, { all: false });
         res.json({ connected: true, id: r.id, decision: null });
     });
@@ -437,7 +452,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const until = Math.min(r.expires + 1000, Date.now() + 280_000);
         while (!settle(r).decision && Date.now() < until && !res.destroyed) await waiters.wait(`perm-req:${r.id}`, (until - Date.now()) / 1000, res);
         if (res.destroyed) return;
-        res.json({ id: r.id, decision: r.decision, message: r.decision === 'deny' ? denyMessage(r) : '' });
+        res.json({ id: r.id, decision: r.decision, message: r.decision === 'deny' ? denyMessage(r) : '', ...(r.answers ? { answers: r.questions.map((q) => r.answers[q.question]) } : {}) });
     });
 
     router.get('/permissions', humanOnly, async (req, res) => {
@@ -453,6 +468,17 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const r = permissions.get(req.params.pid);
         if (!r || r.userId !== req.user.id) return bad(res, 'Deze vraag bestaat niet, of is niet aan jou.', 404);
         if (settle(r).decision) return bad(res, 'Deze vraag is al beantwoord of verlopen.', 409);
+        // A multiple choice question: the answers per question (a label, several labels, or own text)
+        if (r.questions && req.body?.allow === true) {
+            const given = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : {};
+            const answers = {};
+            for (const q of r.questions) {
+                const value = [given[q.question]].flat().map((a) => clean(a, 2000)).filter(Boolean);
+                if (!value.length) return bad(res, `Kies een antwoord bij: ${q.question}`);
+                answers[q.question] = q.multiSelect ? value : value[0];
+            }
+            r.answers = answers;
+        }
         finish(r, req.body?.allow === true ? 'allow' : 'deny', req.user.name);
         res.json({ ok: true, decision: r.decision });
     });

@@ -154,8 +154,14 @@ try {
     $r = Invoke-RestMethod -Method Post -Headers $h -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 '${address}/api/permissions'
     if (-not $r.connected) { exit 0 }
     while (-not $r.decision) { $r = Invoke-RestMethod -Headers $h -TimeoutSec 300 "${address}/api/permissions/$($r.id)/wait" }
-    $besluit = if ($r.decision -eq 'allow') { @{ behavior = 'allow' } } else { @{ behavior = 'deny'; message = $r.message } }
-    @{ hookSpecificOutput = @{ hookEventName = 'PermissionRequest'; decision = $besluit } } | ConvertTo-Json -Depth 5 -Compress
+    $besluit = if ($r.decision -ne 'allow') { @{ behavior = 'deny'; message = $r.message } } else { @{ behavior = 'allow' } }
+    # A multiple choice question of Claude: the answers in the order of the questions, under their own text
+    if ($r.decision -eq 'allow' -and $r.answers) {
+        $antwoorden = @{}
+        for ($i = 0; $i -lt @($vraag.tool_input.questions).Count; $i++) { $antwoorden[@($vraag.tool_input.questions)[$i].question] = @($r.answers)[$i] }
+        $besluit.updatedInput = @{ questions = $vraag.tool_input.questions; answers = $antwoorden }
+    }
+    @{ hookSpecificOutput = @{ hookEventName = 'PermissionRequest'; decision = $besluit } } | ConvertTo-Json -Depth 20 -Compress
 } catch {
     exit 0
 }

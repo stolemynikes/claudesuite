@@ -541,6 +541,18 @@ test('permission questions: only for a session in a chat, only its own person an
         await pepijn('POST', `/api/permissions/${second.id}`, { allow: false });
         assert.deepEqual((await claudeP('GET', `/api/permissions/${second.id}/wait`)).data, { id: second.id, decision: 'deny', message: 'Geweigerd in ClaudeSuite door Pepijn.' });
 
+        // a multiple choice question of Claude: every question needs an answer; the answers come back in question order
+        const questions = [
+            { question: 'Welke database?', header: 'Database', multiSelect: false, options: [{ label: 'SQLite', description: 'Licht' }, { label: 'Postgres', description: 'Zwaar' }] },
+            { question: 'Welke tests?', header: 'Tests', multiSelect: true, options: [{ label: 'Unit', description: '' }, { label: 'E2E', description: '' }] },
+        ];
+        const q = (await claudeP('POST', '/api/permissions', { cwd: ask.cwd, tool: 'AskUserQuestion', input: { questions } })).data;
+        assert.equal((await pepijn('GET', '/api/permissions')).data.requests[0].questions[1].multiSelect, true);
+        assert.equal((await pepijn('POST', `/api/permissions/${q.id}`, { allow: true, answers: { 'Welke database?': 'SQLite' } })).status, 400);
+        await pepijn('POST', `/api/permissions/${q.id}`, { allow: true, answers: { 'Welke database?': ['SQLite'], 'Welke tests?': ['Unit', 'Iets anders'] } });
+        assert.deepEqual((await claudeP('GET', `/api/permissions/${q.id}/wait`)).data.answers, ['SQLite', ['Unit', 'Iets anders']]);
+        assert.match((await chris('GET', `/api/chats/${chat.id}/messages`)).data.messages.at(-1).text, /geantwoord:\nWelke database\? → SQLite\nWelke tests\? → Unit, Iets anders/);
+
         // the hook script for the pc never contains the key
         assert.ok(!(await claudeP('GET', '/api/claude-hook.ps1')).data.includes('csk_'));
     } finally {
