@@ -63,7 +63,7 @@ test('office only: private addresses yes, internet and proxies no', async () => 
 test('accounts: invite once, login link, wrong tries blocked, no secrets in the database', async () => {
     const s = await start();
     try {
-        const admin = s.call(await s.login('beheerder', ADMIN_PASSWORD));
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
         const { secret, as: pepijn } = await invitePerson(s, admin, 'Pepijn');
         // an invite works once
         const again = await s.call(null)('POST', '/auth/join', { invite: secret, name: 'Ander', password: 'nog-een-wachtwoord' });
@@ -99,7 +99,7 @@ test('accounts: invite once, login link, wrong tries blocked, no secrets in the 
 test('chats: members only, Claude writes as "Claude (name)", Claude cannot manage, wait wakes up', async () => {
     const s = await start();
     try {
-        const admin = s.call(await s.login('beheerder', ADMIN_PASSWORD));
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
         const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
         const { as: chris } = await invitePerson(s, admin, 'Chris');
         const { as: buiten } = await invitePerson(s, admin, 'Buiten');
@@ -148,7 +148,7 @@ test('chats: members only, Claude writes as "Claude (name)", Claude cannot manag
 test('files: straight to disk, size limit, members only, never run as a page', async () => {
     const s = await start({ maxFileBytes: 1000 });
     try {
-        const admin = s.call(await s.login('beheerder', ADMIN_PASSWORD));
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
         const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
         const { as: buiten } = await invitePerson(s, admin, 'Buiten');
         const { chat } = (await pepijn('POST', '/api/chats', { title: 'Logs' })).data;
@@ -175,7 +175,7 @@ test('files: straight to disk, size limit, members only, never run as a page', a
 test('onderwerp.md: versions, refused when someone saved in between, download', async () => {
     const s = await start();
     try {
-        const admin = s.call(await s.login('beheerder', ADMIN_PASSWORD));
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
         const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
         const { chat } = (await pepijn('POST', '/api/chats', { title: 'Facturen afletteren', brief: '# Afletteren\n\n- dagboek MultiSafepay' })).data;
         const claudeP = s.claude((await pepijn('POST', '/api/me/claude-key')).data.key);
@@ -208,7 +208,7 @@ test('onderwerp.md: versions, refused when someone saved in between, download', 
 test('live: typing and thinking wake the chat, a post ends them; the chat list hears about new chats', async () => {
     const s = await start();
     try {
-        const admin = s.call(await s.login('beheerder', ADMIN_PASSWORD));
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
         const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
         const { as: chris } = await invitePerson(s, admin, 'Chris');
 
@@ -251,7 +251,7 @@ test('live: typing and thinking wake the chat, a post ends them; the chat list h
 test('no password: invite only, one-time device link; zelf handelen only when everyone agreed', async () => {
     const s = await start();
     try {
-        const admin = s.call(await s.login('beheerder', ADMIN_PASSWORD));
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
         const { data } = await admin('POST', '/api/invites', { role: 'member' });
         const joined = await fetch(`${s.base}/auth/join`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ invite: data.link.split('/uitnodiging/')[1], name: 'Roel' }) });
         assert.equal(joined.status, 200, 'an account without a password');
@@ -305,7 +305,7 @@ test('no password: invite only, one-time device link; zelf handelen only when ev
 test('unread and tags: counts per chat, @name and @Claude-name, being added lights up, not in chat comes back', async () => {
     const s = await start();
     try {
-        const admin = s.call(await s.login('beheerder', ADMIN_PASSWORD));
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
         const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
         const { as: chris } = await invitePerson(s, admin, 'Chris');
         await invitePerson(s, admin, 'Roel');
@@ -343,7 +343,7 @@ test('unread and tags: counts per chat, @name and @Claude-name, being added ligh
 test('presence: a waiting Claude listener shows as live; general CLAUDE.md piece between markers', async () => {
     const s = await start();
     try {
-        const admin = s.call(await s.login('beheerder', ADMIN_PASSWORD));
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
         const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
         const { chat } = (await pepijn('POST', '/api/chats', { title: 'Live' })).data;
         const claudeP = s.claude((await pepijn('POST', '/api/me/claude-key')).data.key);

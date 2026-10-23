@@ -8,7 +8,7 @@ import { createServer } from './server.js';
 
 // A first password shorter than 12 characters is not accepted
 const store = createStore(DATA_DIR, { firstPassword: FIRST_PASSWORD.length >= 12 ? FIRST_PASSWORD : '', resetPassword: RESET_PASSWORD });
-if (RESET_PASSWORD) console.log('Password of "beheerder" reset to ADMIN_PASSWORD from .env. Remove ADMIN_PASSWORD_RESET from .env now.');
+if (RESET_PASSWORD) console.log('Password of "Admin" reset to ADMIN_PASSWORD from .env. Remove ADMIN_PASSWORD_RESET from .env now.');
 if (!store.hasUsers()) {
     console.log('Please set ADMIN_PASSWORD in the .env file first (at least 12 characters)');
     process.exit(1);

@@ -157,7 +157,7 @@ async function showJoin(secret) {
     const { valid } = await api(`/auth/invite/${encodeURIComponent(secret)}`).catch(() => ({ valid: false }));
     if (!valid) {
         return root.replaceChildren(h('div', { class: 'page full' }, h('div', { class: 'column' }, h('div', { class: 'card' },
-            h('h1', {}, 'Uitnodiging'), h('p', {}, 'Deze uitnodiging is al gebruikt of verlopen. Vraag een beheerder om een nieuwe.'), h('a', { class: 'btn', href: '/' }, 'Naar inloggen')))));
+            h('h1', {}, 'Uitnodiging'), h('p', {}, 'Deze uitnodiging is al gebruikt of verlopen. Vraag een admin om een nieuwe.'), h('a', { class: 'btn', href: '/' }, 'Naar inloggen')))));
     }
     const error = h('p', { class: 'error', role: 'alert' });
     const name = h('input', { id: 'join-name', autocomplete: 'username', required: true, maxlength: '30' });
@@ -278,7 +278,7 @@ function showNewChat(brief = '') {
     const others = h('div', { class: 'row' }, h('span', { class: 'muted' }, 'Laden…'));
     api('/api/users').then(({ users }) => {
         const list = users.filter((u) => u.id !== state.user.id);
-        others.replaceChildren(...(list.length ? list.map((u) => h('label', { class: 'check' }, h('input', { type: 'checkbox', value: u.name }), u.name)) : [h('span', { class: 'muted' }, 'Nog niemand anders. Vraag een beheerder om uitnodigingen.')]));
+        others.replaceChildren(...(list.length ? list.map((u) => h('label', { class: 'check' }, h('input', { type: 'checkbox', value: u.name }), u.name)) : [h('span', { class: 'muted' }, 'Nog niemand anders. Vraag een admin om uitnodigingen.')]));
     });
     const form = h('form', { class: 'card', onsubmit: async (event) => {
         event.preventDefault();
@@ -592,7 +592,7 @@ function membersDrawer() {
         h('div', { class: 'row' }, select, action('Toevoegen', async () => {
             if (select.value) after(await api(`/api/chats/${state.chatId}/members`, { method: 'POST', body: { name: select.value } }));
         }, { kind: 'primary' })),
-        h('p', { class: 'muted' }, 'Staat iemand er niet tussen? Die heeft nog geen account: vraag een beheerder om een uitnodigingslink.'));
+        h('p', { class: 'muted' }, 'Staat iemand er niet tussen? Die heeft nog geen account: vraag een admin om een uitnodigingslink.'));
 }
 
 function claudeDrawer() {
@@ -840,7 +840,7 @@ function setupCommand(key) {
 
 function showAdmin() {
     stopPolling();
-    const role = h('select', { 'aria-label': 'Rol' }, h('option', { value: 'member' }, 'Deelnemer'), h('option', { value: 'admin' }, 'Beheerder'));
+    const role = h('select', { 'aria-label': 'Rol' }, h('option', { value: 'member' }, 'Deelnemer'), h('option', { value: 'admin' }, 'Admin'));
     const inviteOut = h('div');
     const usersBody = h('tbody');
     async function loadUsers() {
@@ -853,7 +853,7 @@ function showAdmin() {
                 } catch (e) {
                     alert(e.message);
                 }
-            } }, h('option', { value: 'member' }, 'Deelnemer'), h('option', { value: 'admin' }, 'Beheerder'));
+            } }, h('option', { value: 'member' }, 'Deelnemer'), h('option', { value: 'admin' }, 'Admin'));
             roleSelect.value = u.role;
             return h('tr', {}, h('td', {}, h('span', { class: 'people' }, avatar(u), u.name)), h('td', {}, roleSelect),
                 h('td', {}, isMe ? h('span', { class: 'muted' }, 'jij') : h('div', { class: 'row' },

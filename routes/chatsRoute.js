@@ -176,7 +176,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
 
     router.post('/chats/:id/members', humanOnly, json, (req, res) => {
         const member = store.userByName(req.body?.name);
-        if (!member) return bad(res, 'Deze persoon heeft nog geen account. Vraag een beheerder om een uitnodiging.', 404);
+        if (!member) return bad(res, 'Deze persoon heeft nog geen account. Vraag een admin om een uitnodiging.', 404);
         if (!store.isMember(req.chat.id, member.id)) {
             const wasActive = store.autonomy(req.chat.id).active;
             store.addMember(req.chat.id, member.id);

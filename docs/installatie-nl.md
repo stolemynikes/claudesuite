@@ -6,13 +6,13 @@ Elke chat heeft ook een **onderwerp.md**: een gedeeld document met wat er beslot
 
 ClaudeSuite werkt **alleen op het netwerk van kantoor**. Thuis of onderweg werkt hij niet, en dat is expres zo.
 
-- **Deel 1 · Installeren.** Eenmalig, ongeveer twintig minuten. Door de beheerder.
+- **Deel 1 · Installeren.** Eenmalig, ongeveer twintig minuten. Door de admin.
 - **Deel 2 · Gebruiken.** Voor iedereen.
 - **Deel 3 · Wat te doen als…**
 
 ---
 
-## Deel 1 · Installeren (eenmalig, door de beheerder)
+## Deel 1 · Installeren (eenmalig, door de admin)
 
 Je hebt nodig: een pc op kantoor, een NAS-account met beheerrechten, en SSH naar de NAS
 (PowerShell: `ssh Pepijn@192.168.2.41`, zie de handleiding van NAS Beheer).
@@ -28,7 +28,7 @@ Je hebt nodig: een pc op kantoor, een NAS-account met beheerrechten, en SSH naar
 1. Zet het bestand **`docker-compose.yml`** uit deze repository in de map **docker** → **claudesuite** (slepen naar File Station).
 2. Maak op je pc een kopie van **`.env.example`** en noem die **`.env`** (met de punt ervoor, zonder `.example`).
 3. Open `.env` met Kladblok en vul in:
-   - `ADMIN_PASSWORD=` een wachtwoord van minstens 12 tekens. Hiermee log je de eerste keer in als `beheerder`.
+   - `ADMIN_PASSWORD=` een wachtwoord van minstens 12 tekens. Hiermee log je de eerste keer in als `Admin`.
 4. Sla op en sleep `.env` ook in de map **docker** → **claudesuite**.
 5. **Verwijder `.env` daarna van je pc.**
 
@@ -72,13 +72,13 @@ Net als bij NAS Beheer:
 ### Stap 5 · Eerste keer inloggen
 
 1. Open in de browser: `http://192.168.2.41:8082`
-2. Log in met naam `beheerder` en het wachtwoord uit stap 2.
+2. Log in met naam `Admin` en het wachtwoord uit stap 2.
 3. Open de `.env` in **docker** → **claudesuite** nog één keer en maak de regel leeg: `ADMIN_PASSWORD=`
    (het wachtwoord staat nu versleuteld in ClaudeSuite zelf).
 
 ### Stap 6 · Collega's uitnodigen
 
-1. Klik rechtsboven op **Beheer** → **Uitnodigingslink maken** (rol: Deelnemer, of Beheerder).
+1. Klik rechtsboven op **Beheer** → **Uitnodigingslink maken** (rol: Deelnemer, of Admin).
 2. Geef de link persoonlijk aan de collega (niet in een groepschat). Hij werkt **één keer** en **een week** lang.
 3. De collega opent de link op kantoor, kiest een naam en is binnen. Een wachtwoord is niet nodig.
 
@@ -136,7 +136,7 @@ geen wachtwoorden aan.
 ## Deel 3 · Wat te doen als…
 
 **Ik ben al mijn apparaten kwijt.**
-Vraag een beheerder: **Beheer** → bij jouw naam **Herstellink**. Die werkt één keer, een uur lang.
+Vraag een admin: **Beheer** → bij jouw naam **Herstellink**. Die werkt één keer, een uur lang.
 
 **Een koppel- of uitnodigingslink werkt niet.**
 Hij is al gebruikt of verlopen. Vraag een nieuwe.
@@ -148,7 +148,7 @@ of in NAS Beheer → **Paneel** → **Updates** → **Aanzetten**.
 **Mijn Claude krijgt "Deze Claude-sleutel klopt niet (meer)".**
 Er is een nieuwe sleutel gemaakt (of hij is ingetrokken). Maak een nieuwe en voer de `setx`-opdracht opnieuw uit.
 
-**De beheerder is zijn wachtwoord kwijt.**
+**Admin is het wachtwoord kwijt.**
 Zet in de `.env` van ClaudeSuite `ADMIN_PASSWORD=` (nieuw, minstens 12 tekens) en `ADMIN_PASSWORD_RESET=true`, start opnieuw
 (`sudo docker compose -p claudesuite up -d --no-build`), log in, en haal beide regels weer leeg.
 

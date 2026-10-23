@@ -57,4 +57,4 @@ export function apiGuard({ store, sessions }) {
 // Only people (not their Claude)
 export const humanOnly = (req, res, next) => (req.isClaude ? res.status(403).json({ message: 'Dit kan alleen een mens, niet Claude.' }) : next());
 // Only a beheerder
-export const adminOnly = (req, res, next) => (!req.isClaude && req.user.role === 'admin' ? next() : res.status(403).json({ message: 'Dit mag alleen een beheerder.' }));
+export const adminOnly = (req, res, next) => (!req.isClaude && req.user.role === 'admin' ? next() : res.status(403).json({ message: 'Dit mag alleen een admin.' }));

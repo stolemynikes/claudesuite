@@ -53,12 +53,12 @@ export function createStore(dataDir, { firstPassword = '', resetPassword = false
     const all = (sql, ...args) => db.prepare(sql).all(...args);
     const run = (sql, ...args) => db.prepare(sql).run(...args);
 
-    // First start: a random session secret, and the user "beheerder" with ADMIN_PASSWORD
+    // First start: a random session secret, and the user "Admin" with ADMIN_PASSWORD
     if (!one("SELECT value FROM settings WHERE key = 'sessionSecret'")) run("INSERT INTO settings VALUES ('sessionSecret', ?)", crypto.randomBytes(32).toString('hex'));
     const sessionSecret = one("SELECT value FROM settings WHERE key = 'sessionSecret'").value;
     if (firstPassword) {
-        const admin = one("SELECT id FROM users WHERE name_lower = 'beheerder'");
-        if (!admin) addUser({ name: 'beheerder', role: 'admin', password: firstPassword });
+        const admin = one("SELECT id FROM users WHERE name_lower = 'admin'");
+        if (!admin) addUser({ name: 'Admin', role: 'admin', password: firstPassword });
         else if (resetPassword) run('UPDATE users SET password_hash = ?, role = ?, session_version = session_version + 1 WHERE id = ?', hashPassword(firstPassword), 'admin', admin.id);
     }
 
