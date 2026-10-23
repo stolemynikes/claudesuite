@@ -226,8 +226,12 @@ test('live: typing and thinking wake the chat, a post ends them; the chat list h
         await new Promise((r) => setTimeout(r, 100));
         const claudeP = s.claude((await pepijn('POST', '/api/me/claude-key')).data.key);
         await claudeP('POST', `/api/chats/${chat.id}/typing`, { kind: 'thinking', seconds: 60 });
-        const woke = (await waiting).data;
-        assert.deepEqual(woke.messages, []);
+        // first wake-up: Claude (Pepijn) shows up in the chat (the icon at Pepijn)
+        assert.deepEqual((await waiting).data.messages, []);
+        // ask again with an old typing version: answers at once with how things are now
+        const woke = (await chris('GET', `/api/chats/${chat.id}/wait?since=${last}&tv=-1`)).data;
+        assert.deepEqual(woke.claudes.map((c) => c.name), ['Pepijn']);
+        assert.equal(woke.claudes[0].listening, false, 'used, but not waiting live');
         assert.equal(woke.typing[0].sender, 'Claude (Pepijn)');
         assert.equal(woke.typing[0].kind, 'thinking');
         // a Claude listener without tv is not woken by typing, only by messages
@@ -331,6 +335,29 @@ test('unread and tags: counts per chat, @name and @Claude-name, being added ligh
         assert.equal((await pepijn('GET', '/api/chats')).data.chats[0].unread, 1, 'Pepijn has not read the message of Chris');
         await pepijn('POST', `/api/chats/${chat.id}/messages`, { text: 'nog eentje' });
         assert.equal((await chris('GET', '/api/chats')).data.chats[0].unread, 1, 'a later message is new again');
+    } finally {
+        s.close();
+    }
+});
+
+test('presence: a waiting Claude listener shows as live; general CLAUDE.md piece between markers', async () => {
+    const s = await start();
+    try {
+        const admin = s.call(await s.login('beheerder', ADMIN_PASSWORD));
+        const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
+        const { chat } = (await pepijn('POST', '/api/chats', { title: 'Live' })).data;
+        const claudeP = s.claude((await pepijn('POST', '/api/me/claude-key')).data.key);
+        const last = (await pepijn('GET', `/api/chats/${chat.id}/messages`)).data.messages.at(-1).id;
+        const listening = claudeP('GET', `/api/chats/${chat.id}/wait?since=${last}&timeout=2`);
+        await new Promise((r) => setTimeout(r, 150));
+        assert.deepEqual((await pepijn('GET', `/api/chats/${chat.id}`)).data.claudes, [{ name: 'Pepijn', color: 0 + (await pepijn('GET', '/api/me')).data.user.color, listening: true }]);
+        await listening;
+
+        const setup = (await claudeP('GET', '/api/claude-setup.md')).data;
+        assert.match(setup, /^<!-- claudesuite:start -->/);
+        assert.match(setup, /<!-- claudesuite:end -->\n$/);
+        assert.match(setup, /@Claude-Pepijn/);
+        assert.ok(!setup.includes('csk_'), 'the key itself is never in it');
     } finally {
         s.close();
     }

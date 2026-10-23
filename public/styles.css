@@ -317,3 +317,13 @@ td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--rule
 @keyframes glow { 0%, 100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
   50% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent), 0 0 18px color-mix(in srgb, var(--accent) 30%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .chat-item.tagged { box-shadow: inset 0 0 0 1px var(--accent); } }
+
+/* ---------- whose Claude takes part ---------- */
+.person { position: relative; display: inline-flex; margin-right: 6px; }
+.claude-badge { position: absolute; right: -5px; bottom: -4px; width: 14px; height: 14px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface-3); color: var(--muted); box-shadow: 0 0 0 2px var(--bg); animation: pop var(--base) var(--ease-out); }
+.claude-badge .icon { width: 10px; height: 10px; stroke-width: 2.5; }
+.claude-badge.live { background: var(--accent); color: #fff; }
+.claude-badge.live::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: ping 2s ease-out infinite; }
+.msg-head .claude-icon { width: 13px; height: 13px; color: var(--claude); align-self: center; }
+@keyframes ping { 0% { transform: scale(0.8); opacity: 0.7; } 100% { transform: scale(1.8); opacity: 0; } }

@@ -319,6 +319,7 @@ async function openChat(id) {
     state.chat = data.chat;
     state.members = data.members;
     state.autonomy = data.autonomy;
+    state.claudes = data.claudes || [];
     const first = await api(`/api/chats/${id}/wait?since=0&tv=0`);
     messagesEl.replaceChildren(...first.messages.map((m) => messageEl(m)), thinkingEl);
     state.lastId = first.messages.at(-1)?.id || 0;
@@ -344,7 +345,7 @@ function drawChat() {
             h('button', { class: 'btn ghost icon-only back', type: 'button', 'aria-label': 'Terug naar chats', onclick: showNoChat }, icon('back')),
             h('h2', {}, c.title), c.archived ? h('span', { class: 'muted small' }, 'gearchiveerd') : null),
         c.description ? h('p', { class: 'muted' }, c.description) : null,
-        h('div', { class: 'people' }, state.members.map((m) => avatar(m)), h('span', {}, state.members.map((m) => m.name).join(', '))),
+        peopleEl,
         autonomyBar(),
         h('div', { class: 'chat-tools' },
             tool('brief', 'doc', 'onderwerp.md'), tool('members', 'users', 'Deelnemers'), tool('claude', 'spark', 'Claude laten meedoen'),
@@ -355,6 +356,20 @@ function drawChat() {
             })));
     const bottom = state.drawer === 'brief' ? briefDrawer() : state.drawer === 'members' ? membersDrawer() : state.drawer === 'claude' ? claudeDrawer() : composer();
     chatEl.replaceChildren(head, messagesEl, bottom);
+    drawPeople();
+}
+
+// The members, each with a small Claude icon when their Claude takes part: green = listening live, grey = active lately.
+// Its own element, so it can change live without touching what someone is typing.
+const peopleEl = h('div', { class: 'people' });
+function drawPeople() {
+    const claude = (name) => (state.claudes || []).find((c) => c.name === name);
+    peopleEl.replaceChildren(...state.members.map((m) => {
+        const c = claude(m.name);
+        const label = c ? `${m.name}, Claude ${c.listening ? 'luistert live mee' : 'was net actief'}` : m.name;
+        return h('span', { class: 'person', title: label, 'aria-label': label }, avatar(m),
+            c ? h('span', { class: `claude-badge${c.listening ? ' live' : ''}` }, icon('spark')) : null);
+    }), h('span', {}, state.members.map((m) => m.name).join(', ')));
 }
 
 // Text with ``` blocks shown as code and @tags marked; everything as text, never as HTML
@@ -379,7 +394,7 @@ function messageEl(m, isNew = false) {
         : h('a', { class: 'file', href: `/api/files/${m.file.id}?download=1` }, icon('file'), `${m.file.name} · ${size(m.file.size)}`, icon('download'));
     const forMe = (m.tags || []).some((t) => !t.claude && t.name === state.user.name);
     return colored(h('article', { class: `msg${m.isClaude ? ' claude' : ''}${mine ? ' mine' : ''}${forMe ? ' for-me' : ''}${isNew ? ' new' : ''}`, 'aria-label': `Bericht ${m.id} van ${m.sender}${forMe ? ', je bent getagd' : ''}` },
-        h('div', { class: 'msg-head' }, h('b', {}, m.sender), h('span', {}, `#${m.id} · ${when(m.created)}`)),
+        h('div', { class: 'msg-head' }, m.isClaude ? icon('spark', 'claude-icon') : null, h('b', {}, m.sender), h('span', {}, `#${m.id} · ${when(m.created)}`)),
         m.text ? h('div', { class: 'msg-body' }, textWithCode(m.text)) : null, file), m.color);
 }
 
@@ -605,6 +620,8 @@ function startPolling(id) {
                 if (state.chatId !== id) return;
                 state.tv = data.tv;
                 state.typing = data.typing;
+                state.claudes = data.claudes || [];
+                drawPeople();
                 const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
                 for (const m of data.messages) if (m.id > state.lastId) messagesEl.insertBefore(messageEl(m, true), thinkingEl);
                 if (data.messages.length) {
@@ -619,6 +636,7 @@ function startPolling(id) {
                     state.chat = fresh.chat;
                     state.members = fresh.members;
                     state.autonomy = fresh.autonomy;
+                    state.claudes = fresh.claudes || [];
                     if (!state.drawer) drawChat();
                 }
             } catch (e) {
@@ -714,12 +732,18 @@ async function showProfile() {
             h('div', { class: 'row' },
                 action(user.hasClaudeKey ? 'Nieuwe sleutel (de oude stopt)' : 'Claude-sleutel maken', async () => {
                     const { key } = await api('/api/me/claude-key', { method: 'POST' });
-                    const command = `setx CLAUDESUITE_KEY "${key}"`;
+                    const command = `setx CLAUDESUITE_KEY "${key}"; ${setupCommand(`"${key}"`)}`;
                     keyOut.replaceChildren(h('div', { class: 'secret' },
-                        h('p', {}, 'Voer dit één keer uit in PowerShell op je eigen pc, en start daarna Claude Code opnieuw:'),
+                        h('p', {}, 'Plak dit één keer in PowerShell op je eigen pc en druk op Enter. Het zet je sleutel en zet ClaudeSuite in je CLAUDE.md. Start Claude Code daarna opnieuw.'),
                         h('p', { class: 'mono' }, command), h('div', {}, copyButton(command)),
                         h('p', { class: 'muted' }, 'Deze sleutel wordt niet nog eens getoond. Plak hem nooit in een chat.')));
                 }, { kind: 'primary' }),
+                user.hasClaudeKey ? action('Update mijn CLAUDE.md', async () => {
+                    const command = setupCommand('$env:CLAUDESUITE_KEY');
+                    keyOut.replaceChildren(h('div', { class: 'secret' },
+                        h('p', {}, 'Plak dit in PowerShell op de pc waar je sleutel al staat. Het vervangt alleen het ClaudeSuite-stuk in je CLAUDE.md; de rest blijft staan.'),
+                        h('p', { class: 'mono' }, command), h('div', {}, copyButton(command))));
+                }) : null,
                 user.hasClaudeKey ? action('Intrekken', async () => {
                     await api('/api/me/claude-key', { method: 'DELETE' });
                     keyOut.replaceChildren(h('p', { class: 'ok' }, 'Ingetrokken.'));
@@ -727,6 +751,23 @@ async function showProfile() {
             keyOut),
         h('div', { class: 'card' }, h('h2', {}, 'Thema'), h('p', { class: 'muted' }, 'Alleen op dit apparaat.'), themes));
     root.replaceChildren(topBar(), h('div', { class: 'page' }, page));
+}
+
+// One PowerShell command that puts the general ClaudeSuite piece into the person's own CLAUDE.md
+// (C:\Users\<name>\.claude\CLAUDE.md). It only downloads text (nothing from the NAS is run as code) and replaces
+// just the piece between the claudesuite markers, so a second time updates it and the rest of the file stays.
+function setupCommand(key) {
+    const url = `${location.origin}/api/claude-setup.md`;
+    return [
+        `$k = ${key}`,
+        '$f = "$HOME\\.claude\\CLAUDE.md"',
+        'New-Item -ItemType Directory -Force (Split-Path $f) | Out-Null',
+        '$old = if (Test-Path $f) { [IO.File]::ReadAllText($f) } else { \'\' }',
+        `$new = Invoke-RestMethod -Headers @{ Authorization = "Bearer $k" } "${url}"`,
+        '$old = [regex]::Replace($old, \'(?s)\\s*<!-- claudesuite:start -->.*?<!-- claudesuite:end -->\\s*\', [Environment]::NewLine)',
+        '[IO.File]::WriteAllText($f, ($old.Trim() + [Environment]::NewLine + [Environment]::NewLine + $new.Trim() + [Environment]::NewLine).TrimStart(), (New-Object Text.UTF8Encoding $false))',
+        '"ClaudeSuite staat nu in $f"',
+    ].join('; ');
 }
 
 // ---------- beheer ----------

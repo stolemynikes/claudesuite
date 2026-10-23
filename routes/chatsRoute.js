@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { apiGuard, humanOnly } from '../suite/guard.js';
-import { claudeInstructions } from '../suite/claudeInstructions.js';
+import { claudeInstructions, claudeSetup } from '../suite/claudeInstructions.js';
 
 // The chats. People and their Claude (with the person's Claude key) only see the chats they are a member of.
 //
@@ -26,6 +26,7 @@ import { claudeInstructions } from '../suite/claudeInstructions.js';
 //   PUT    /api/chats/:id/brief                  { text, version } (or text/plain with ?version=); refused when someone saved in between
 //   GET    /api/chats/:id/onderwerp.md           onderwerp.md as a download
 //   GET    /api/chats/:id/claude.md              how a Claude Code session joins this chat
+//   GET    /api/claude-setup.md                  the general piece for the person's own CLAUDE.md
 
 const MAX_TEXT = 8000;
 const MAX_TITLE = 80;
@@ -42,7 +43,7 @@ const safeName = (name) => String(name || '').split(/[\\/]/).pop().replace(/[\u0
 export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     const router = express.Router();
     const guard = apiGuard({ store, sessions });
-    router.use(['/chats', '/chats-changed', '/files'], guard);
+    router.use(['/chats', '/chats-changed', '/files', '/claude-setup.md'], guard);
     const json = express.json({ limit: '300kb' });
     const text = express.text({ limit: '300kb', type: 'text/plain' });
 
@@ -51,6 +52,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const chat = /^\d{1,9}$/.test(id) ? store.chat(id) : null;
         if (!chat || !store.isMember(chat.id, req.user.id)) return bad(res, 'Deze chat bestaat niet, of je bent geen deelnemer.', 404);
         req.chat = chat;
+        if (req.isClaude) claudeSeen(chat.id, req.user.id);
         next();
     });
     const open = (req, res, next) => (req.chat.archived ? bad(res, 'Deze chat is gearchiveerd. Haal hem eerst uit het archief.') : next());
@@ -65,8 +67,40 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     const typingNow = (chatId) => {
         const entry = typingOf(chatId);
         const list = [...entry.who].filter(([, t]) => t.until > Date.now()).map(([sender, t]) => ({ sender, ...t }));
-        return { tv: entry.version, typing: list };
+        return { tv: entry.version, typing: list, claudes: claudesNow(chatId) };
     };
+    const bump = (chatId) => {
+        typingOf(chatId).version += 1;
+        waiters.notify(chatId, { all: false });
+    };
+
+    // Which Claudes take part, per chat, only in memory: "listening" while its live listener waits (plus 15 s, the
+    // gap between two waits), "recent" when it used the chat in the last 15 minutes. Shown as an icon at the person.
+    const LISTEN_GAP = 15_000;
+    const RECENT = 15 * 60_000;
+    const presence = new Map(); // chatId -> Map(userId -> { waiting, waitEnded, seen })
+    const presenceOf = (chatId, userId) => {
+        if (!presence.has(chatId)) presence.set(chatId, new Map());
+        const chat = presence.get(chatId);
+        if (!chat.has(userId)) chat.set(userId, { waiting: 0, waitEnded: 0, seen: 0 });
+        return chat.get(userId);
+    };
+    const isListening = (p) => p.waiting > 0 || Date.now() - p.waitEnded < LISTEN_GAP;
+    function claudesNow(chatId) {
+        const list = [];
+        for (const [userId, p] of presence.get(chatId) || []) {
+            if (!isListening(p) && Date.now() - p.seen > RECENT) continue;
+            const person = store.user(userId);
+            if (person) list.push({ name: person.name, color: person.color, listening: isListening(p) });
+        }
+        return list;
+    }
+    function claudeSeen(chatId, userId) {
+        const p = presenceOf(chatId, userId);
+        const wasShown = isListening(p) || Date.now() - p.seen <= RECENT;
+        p.seen = Date.now();
+        if (!wasShown) bump(chatId);
+    }
     function setTyping(chatId, sender, value) {
         const entry = typingOf(chatId);
         if (!value && !entry.who.has(sender)) return;
@@ -113,7 +147,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
 
     router.get('/chats/:id', (req, res) => {
         const { text: briefText, ...brief } = store.brief(req.chat.id);
-        res.json({ chat: req.chat, members: store.members(req.chat.id), brief: { ...brief, length: briefText.length }, autonomy: store.autonomy(req.chat.id) });
+        res.json({ chat: req.chat, members: store.members(req.chat.id), brief: { ...brief, length: briefText.length }, autonomy: store.autonomy(req.chat.id), claudes: claudesNow(req.chat.id) });
     });
 
     router.post('/chats/:id/autonomy', humanOnly, open, json, (req, res) => {
@@ -183,9 +217,19 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const tv = req.query.tv === undefined ? null : Number(req.query.tv) || 0;
         const until = Date.now() + Math.min(Math.max(Number(req.query.timeout) || 60, 1), 300) * 1000;
         let messages = store.messages(req.chat.id, { since });
-        while (!messages.length && since > 0 && (tv === null || typingNow(req.chat.id).tv === tv) && Date.now() < until && !res.destroyed) {
-            await waiters.wait(req.chat.id, (until - Date.now()) / 1000, res);
-            messages = store.messages(req.chat.id, { since });
+        // A Claude that waits here is "listening live" (the others see its icon turn green)
+        const p = req.isClaude ? presenceOf(req.chat.id, req.user.id) : null;
+        if (p) {
+            if (!isListening(p)) bump(req.chat.id);
+            p.waiting += 1;
+        }
+        try {
+            while (!messages.length && since > 0 && (tv === null || typingNow(req.chat.id).tv === tv) && Date.now() < until && !res.destroyed) {
+                await waiters.wait(req.chat.id, (until - Date.now()) / 1000, res);
+                messages = store.messages(req.chat.id, { since });
+            }
+        } finally {
+            if (p) Object.assign(p, { waiting: p.waiting - 1, waitEnded: Date.now() });
         }
         if (!res.writableEnded && !res.destroyed) res.json({ messages, ...typingNow(req.chat.id) });
     });
@@ -267,6 +311,11 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const header = `# ${req.chat.title}\n\n${req.chat.description ? `${req.chat.description}\n\n` : ''}`;
         res.set({ 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"` });
         res.send(brief.text.startsWith('#') ? brief.text : header + brief.text);
+    });
+
+    // The general piece for the person's own CLAUDE.md (every new Claude Code session then knows ClaudeSuite)
+    router.get('/claude-setup.md', (req, res) => {
+        res.type('text/markdown; charset=utf-8').send(claudeSetup({ address: `${req.protocol}://${req.get('host')}`, name: req.user.name }));
     });
 
     router.get('/chats/:id/claude.md', (req, res) => {
