@@ -51,6 +51,8 @@ export function apiGuard({ store, sessions }) {
             req.sender = `Claude (${user.name}${session ? ` · ${session}` : ''})`;
             return next();
         }
+        // "Bearer" with an empty or wrong key: say so, not "log in" (a Claude cannot log in)
+        if (/^Bearer\b/i.test(req.get('authorization') || '')) return res.status(401).json({ message: 'De Claude-sleutel ontbreekt of klopt niet. Staat CLAUDESUITE_KEY op deze pc?' });
         const user = currentUser(req, { store, sessions });
         if (!user) return res.status(401).json({ message: 'Log opnieuw in.' });
         if (req.method !== 'GET' && req.get('x-suite') !== '1') return res.status(403).json({ message: 'Niet toegestaan.' });

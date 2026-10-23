@@ -1022,18 +1022,20 @@ async function showProfile() {
 function setupCommand(key) {
     const url = `${location.origin}/api/claude-setup.md`;
     return [
-        `$k = ${key}`,
+        // the key: the given one, or the one setx stored (a window opened before setx does not have it yet)
+        `$k = ${key}; if (-not $k) { $k = [Environment]::GetEnvironmentVariable('CLAUDESUITE_KEY', 'User') }`,
+        // in its own block that stops at the first error: nothing is written then, and no "staat nu in" appears
+        `& { try { $ErrorActionPreference = 'Stop'; if (-not $k) { throw 'er staat geen Claude-sleutel op deze pc. Maak er een bij je account en plak die opdracht.' }`,
         '$f = "$HOME\\.claude\\CLAUDE.md"',
         'New-Item -ItemType Directory -Force (Split-Path $f) | Out-Null',
         '$old = if (Test-Path $f) { [IO.File]::ReadAllText($f) } else { \'\' }',
-        // Stop: when ClaudeSuite cannot be reached, nothing is written and no "staat nu in" appears
-        `$new = Invoke-RestMethod -ErrorAction Stop -Headers @{ Authorization = "Bearer $k" } "${url}"`,
+        `$new = Invoke-RestMethod -Headers @{ Authorization = "Bearer $k" } "${url}"`,
         '$old = [regex]::Replace($old, \'(?s)\\s*<!-- claudesuite:start -->.*?<!-- claudesuite:end -->\\s*\', [Environment]::NewLine)',
         '[IO.File]::WriteAllText($f, ($old.Trim() + [Environment]::NewLine + [Environment]::NewLine + $new.Trim() + [Environment]::NewLine).TrimStart(), (New-Object Text.UTF8Encoding $false))',
-        '"ClaudeSuite staat nu in $f"',
+        '"ClaudeSuite staat nu in $f" } catch { "CLAUDE.md is NIET bijgewerkt: $_" } }',
         // The permission hook: questions of a session that takes part in a chat are answered in the app.
         // settings.json is backed up first (settings.json.bak); on any problem it stays as it was.
-        `& { try { $ErrorActionPreference = 'Stop'; $hook = "$HOME\\.claude\\claudesuite-toestemming.ps1"; Invoke-RestMethod -Headers @{ Authorization = "Bearer $k" } "${location.origin}/api/claude-hook.ps1" -OutFile $hook`,
+        `& { try { $ErrorActionPreference = 'Stop'; if (-not $k) { throw 'geen Claude-sleutel' }; $hook = "$HOME\\.claude\\claudesuite-toestemming.ps1"; Invoke-RestMethod -Headers @{ Authorization = "Bearer $k" } "${location.origin}/api/claude-hook.ps1" -OutFile $hook`,
         '$s = "$HOME\\.claude\\settings.json"; $t = if (Test-Path $s) { [IO.File]::ReadAllText($s) } else { \'\' }; $j = if ($t.Trim()) { $t | ConvertFrom-Json } else { New-Object psobject }',
         'if (-not $j.hooks) { $j | Add-Member hooks (New-Object psobject) -Force }',
         '$entry = [pscustomobject]@{ matcher = \'*\'; hooks = @([pscustomobject]@{ type = \'command\'; command = \'powershell -NoProfile -ExecutionPolicy Bypass -File "\' + $hook + \'"\'; timeout = 400 }) }',
