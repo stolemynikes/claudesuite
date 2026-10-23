@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { apiGuard, humanOnly, sessionName } from '../suite/guard.js';
-import { claudeDetails, claudeHook, claudeInstructions, claudeSetup } from '../suite/claudeInstructions.js';
+import { claudeDetails, claudeHook, claudeInstructions, claudeMcpRules, claudeSetup } from '../suite/claudeInstructions.js';
 import { createPermissions, ANSWER_MINUTES } from '../suite/permissions.js';
 import { TAILSCALE_ADDRESS } from '../config.js';
 
@@ -272,15 +272,28 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
     });
 
     router.get('/chats/:id/wait', async (req, res) => {
-        const { since, byNumber } = position(req);
         // Without tv the asker does not care about typing (a Claude listener): only messages wake it up
         const tv = req.query.tv === undefined ? null : Number(req.query.tv) || 0;
-        const until = Date.now() + Math.min(Math.max(Number(req.query.timeout) || 60, 1), 300) * 1000;
+        const messages = await waitMessages(req, res, {
+            tv, timeout: req.query.timeout, wakeOnTags: req.query.wake === 'claude', bundle: req.query.bundle, map: req.query.map, peek: req.query.peek === '1',
+        });
+        if (!messages) return;
+        if (req.query.format !== 'text') return res.json({ messages, ...typingNow(req.chat.id) });
+        // A Claude knows what it wrote itself
+        const others = messages.filter((m) => m.sender !== req.sender);
+        res.type('text/plain; charset=utf-8').send(others.length ? asText(others, { chat: req.chat, me: req.user.name, next: messages.at(-1).number }) : '');
+    });
+
+    // Waits (max 300 s) until there is something after the reader's position (see position()), for the route above
+    // and for the MCP tool "wachten". null when the asker went away.
+    // peek: only look (the MCP listener), so "lezen" still gets the messages afterwards
+    async function waitMessages(req, res, { tv = null, timeout, wakeOnTags = false, bundle: bundleSeconds = 0, map = '', peek = false }) {
+        const { since, byNumber } = position(req);
+        const until = Date.now() + Math.min(Math.max(Number(timeout) || 60, 1), 300) * 1000;
         // wake=claude (a Claude listener): only a message that tags this Claude (@Claude-Name or @Claude) wakes it up;
         // all messages in between come along (people and other Claudes). bundle=1: then wait 1 s more, so a quick reply comes in the same go.
         const mine = req.sender;
-        const wakeOnTags = req.query.wake === 'claude';
-        const bundle = Math.min(Math.max(Number(req.query.bundle) || 0, 0), 60);
+        const bundle = Math.min(Math.max(Number(bundleSeconds) || 0, 0), 60);
         const wakes = (list) => (wakeOnTags
             ? list.some((m) => m.sender !== mine && !m.isEvent && (m.tags || []).some((t) => t.claude && t.name === req.user.name))
             : list.length > 0);
@@ -293,7 +306,7 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
             if (!isListening(p)) bump(req.chat.id);
             p.waiting += 1;
             // map = the folder the session works in: its permission questions then come to this chat
-            if (req.query.map) permissions.connect({ user: req.user, cwd: req.query.map, chatId: req.chat.id, sender: req.sender });
+            if (map) permissions.connect({ user: req.user, cwd: map, chatId: req.chat.id, sender: req.sender });
         }
         try {
             while (!wakes(messages) && (since > 0 || byNumber) && (tv === null || typingNow(req.chat.id).tv === tv) && Date.now() < until && !res.destroyed) {
@@ -309,13 +322,10 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         }
         // Nothing woke the listener: send nothing, so the messages so far come along next time
         if (!wakes(messages)) messages = [];
-        if (res.writableEnded || res.destroyed) return;
-        remember(req, messages);
-        if (req.query.format !== 'text') return res.json({ messages, ...typingNow(req.chat.id) });
-        // A Claude knows what it wrote itself
-        const others = messages.filter((m) => m.sender !== mine);
-        res.type('text/plain; charset=utf-8').send(others.length ? asText(others, { chat: req.chat, me: req.user.name, next: messages.at(-1).number }) : '');
-    });
+        if (res.writableEnded || res.destroyed) return null;
+        if (!peek) remember(req, messages);
+        return messages;
+    }
 
     router.post('/chats/:id/typing', open, json, (req, res) => {
         const sender = req.sender;
@@ -586,6 +596,134 @@ export function chatsRoute({ store, sessions, waiters, maxFileBytes }) {
         const parts = [unknown.length ? `${unknown.map((u) => `@${u}`).join(', ')} bestaat niet` : '', outside.length ? `${outside.join(', ')} zit${outside.length === 1 ? '' : 'ten'} niet in deze chat` : ''].filter(Boolean);
         return { warning: `Let op: ${parts.join('; ')}, dus die tag doet niets. Taggen in deze chat: ${members}, of @Claude voor alle Claudes.` };
     }
+
+    // ---------- MCP: ClaudeSuite as tools inside Claude Code (POST /api/mcp, JSON-RPC over HTTP, only for a Claude) ----------
+    // Installed once per pc: claude mcp add --transport http -s user claudesuite <address>/api/mcp --header "Authorization: Bearer csk_..."
+    // No curl, no temporary files, no key in commands, and Claude Code asks permission per tool.
+    // Each Claude Code window is its own MCP session (header Mcp-Session-Id): "meedoen" gives it a chat and a session name.
+    const mcpSessions = new Map(); // Mcp-Session-Id -> { chatId, session, at }
+    const MCP_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+    const chatArg = { type: 'integer', description: 'Nummer van de chat (zie "chats"). Weglaten = de chat waar je met "meedoen" in zit.' };
+    const MCP_TOOLS = [
+        { name: 'chats', description: 'Mijn ClaudeSuite-chats: nummer, titel, beschrijving, ongelezen, getagd.', inputSchema: { type: 'object', properties: {} } },
+        { name: 'meedoen', description: 'Doe mee met een chat. Geeft de afspraken van die chat, de deelnemers met hun tagnaam en wat je nog niet las. Doe dit eerst.',
+            inputSchema: { type: 'object', properties: { chat: { type: 'integer', description: 'Nummer van de chat' }, sessie: { type: 'string', description: 'Korte naam voor deze sessie als je persoon meer Claude-vensters heeft, bijv. de repo (Kasper). Je schrijft dan als "Claude (Naam · Kasper)".' } }, required: ['chat'] } },
+        { name: 'lezen', description: 'Berichten lezen. Standaard wat je nog niet zag. #12 is voor iedereen hetzelfde nummer.',
+            inputSchema: { type: 'object', properties: { chat: chatArg, na: { type: 'integer', description: 'Alleen berichten na #na' }, voor: { type: 'integer', description: 'Oudere berichten, voor #voor' } } } },
+        { name: 'schrijven', description: 'Een bericht plaatsen. @Naam tagt een mens, @Claude-Naam diens Claude, @Claude alle Claudes. Een vraag aan een Claude altijd met tag.',
+            inputSchema: { type: 'object', properties: { chat: chatArg, tekst: { type: 'string' } }, required: ['tekst'] } },
+        { name: 'wachten', description: 'Wacht (max 280 s) tot je getagd wordt en geeft dan alle berichten sinds je laatste lezen. "Niets" na de tijd.',
+            inputSchema: { type: 'object', properties: { chat: chatArg, seconden: { type: 'integer', description: 'Hoe lang maximaal (standaard 120)' } } } },
+        { name: 'onderwerp', description: 'onderwerp.md lezen: het gedeelde geheugen van de chat (besluiten, wie wat doet, open punten), met de versie.',
+            inputSchema: { type: 'object', properties: { chat: chatArg } } },
+        { name: 'onderwerp_opslaan', description: 'onderwerp.md opslaan. Geef de versie mee die je net las; is iemand je voor, lees dan opnieuw en pas je wijziging daarop toe.',
+            inputSchema: { type: 'object', properties: { chat: chatArg, tekst: { type: 'string' }, versie: { type: 'integer' } }, required: ['tekst', 'versie'] } },
+        { name: 'status', description: 'Laat de anderen zien dat je nadenkt ("Claude (Naam) denkt na"), of stop dat.',
+            inputSchema: { type: 'object', properties: { chat: chatArg, soort: { type: 'string', enum: ['denkt', 'stop'] }, seconden: { type: 'integer' } }, required: ['soort'] } },
+        { name: 'wie_ben_ik', description: 'Controle: als wie schrijf ik, en op welk adres zit ClaudeSuite.', inputSchema: { type: 'object', properties: {} } },
+    ];
+
+    async function mcpCall(req, res, name, args) {
+        const sessionId = String(req.get('mcp-session-id') || '');
+        const mine = mcpSessions.get(sessionId) || { chatId: 0, session: '' };
+        if (name === 'meedoen') {
+            const session = sessionName(args.sessie);
+            if (session === null) throw new Error('Sessienaam: 1 tot 24 tekens, alleen letters, cijfers, spatie, punt, - of _.');
+            Object.assign(mine, { chatId: Number(args.chat) || 0, session, at: Date.now() });
+            if (sessionId) {
+                if (mcpSessions.size > 500) mcpSessions.delete(mcpSessions.keys().next().value);
+                mcpSessions.set(sessionId, mine);
+            }
+        }
+        const as = mine.session ? `Claude (${req.user.name} · ${mine.session})` : `Claude (${req.user.name})`;
+        if (name === 'chats') return store.chatsFor(req.user.id).map((c) => `${c.id}: ${c.title}${c.description ? ` (${c.description})` : ''}${c.unread ? `, ${c.unread} ongelezen` : ''}${c.tagged ? ', getagd' : ''}`).join('\n') || 'Geen chats.';
+        if (name === 'wie_ben_ik') return `Je schrijft als "${as}". ClaudeSuite: ${req.protocol}://${req.get('host')} (Tailscale: ${TAILSCALE_ADDRESS}).${mine.chatId ? ` Je doet mee in chat ${mine.chatId}.` : ''}`;
+        // everything else is about one chat that this person is in
+        const chat = store.chat(Number(args.chat) || mine.chatId);
+        if (!chat || !store.isMember(chat.id, req.user.id)) throw new Error('Geen (geldige) chat. Gebruik eerst "chats" en dan "meedoen".');
+        const r = { chat, user: req.user, isClaude: true, sender: as, query: {} };
+        claudeSeen(chat.id, req.user.id);
+        const readText = (query) => {
+            r.query = query;
+            const { since, before } = position(r);
+            const messages = store.messages(chat.id, { since, before });
+            if (!before) remember(r, messages);
+            return asText(messages, { chat, me: req.user.name, next: before ? 0 : messages.at(-1)?.number || store.lastNumber(chat.id) });
+        };
+        if (name === 'meedoen') {
+            return `${claudeMcpRules({ address: `${req.protocol}://${req.get('host')}`, chat, name: req.user.name, me: as, session: mine.session, members: store.members(chat.id), autonomy: store.autonomy(chat.id) })}\n## Nog niet gelezen\n${readText({ after: 'laatst' })}`;
+        }
+        if (name === 'lezen') return readText(args.voor ? { voor: args.voor } : { after: args.na ?? 'laatst' });
+        if (name === 'schrijven') {
+            if (chat.archived) throw new Error('Deze chat is gearchiveerd.');
+            const message = clean(args.tekst, MAX_TEXT);
+            if (!message) throw new Error('Leeg bericht.');
+            const { tags, outside, unknown } = findTags(message, chat.id);
+            const saved = post(r, message, null, false, tags);
+            return `Geplaatst als #${saved.number}.${tagWarning(chat.id, outside, unknown).warning ? ` ${tagWarning(chat.id, outside, unknown).warning}` : ''}`;
+        }
+        if (name === 'wachten') {
+            r.query = { after: 'laatst' };
+            const messages = await waitMessages(r, res, { timeout: Math.min(Number(args.seconden) || 120, 280), wakeOnTags: true, bundle: 1 });
+            const others = (messages || []).filter((m) => m.sender !== as);
+            return others.length ? asText(others, { chat, me: req.user.name, next: messages.at(-1).number }) : 'Niets: je bent niet getagd in die tijd.';
+        }
+        if (name === 'onderwerp') {
+            const brief = store.brief(chat.id);
+            return `onderwerp.md, versie ${brief.version}${brief.by ? ` (laatst door ${brief.by})` : ''}:\n\n${brief.text || '(nog leeg)'}`;
+        }
+        if (name === 'onderwerp_opslaan') {
+            if (chat.archived) throw new Error('Deze chat is gearchiveerd.');
+            if (!store.setBrief(chat.id, { text: String(args.tekst ?? '').replace(/\r\n/g, '\n').slice(0, MAX_BRIEF), version: args.versie, by: as })) {
+                throw new Error(`Iemand anders heeft onderwerp.md intussen aangepast (nu versie ${store.brief(chat.id).version}). Lees opnieuw en pas je wijziging daarop toe.`);
+            }
+            note(r, `heeft onderwerp.md bijgewerkt (versie ${store.brief(chat.id).version}).`);
+            return `Opgeslagen, versie ${store.brief(chat.id).version}.`;
+        }
+        if (name === 'status') {
+            const stop = args.soort === 'stop';
+            setTyping(chat.id, as, stop ? null : { kind: 'thinking', isClaude: true, until: Date.now() + Math.min(Math.max(Number(args.seconden) || 120, 1), 300) * 1000 });
+            return stop ? 'Gestopt.' : 'De anderen zien nu dat je nadenkt.';
+        }
+        throw new Error(`Onbekende tool: ${name}`);
+    }
+
+    router.post('/mcp', guard, json, async (req, res) => {
+        if (!req.isClaude) return bad(res, 'De MCP-server is voor een Claude (met de Claude-sleutel).', 403);
+        const one = async (msg) => {
+            const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
+            if (msg?.jsonrpc !== '2.0' || typeof msg.method !== 'string') return { jsonrpc: '2.0', id: msg?.id ?? null, error: { code: -32600, message: 'Ongeldig verzoek' } };
+            if (msg.id === undefined) return null; // a notification (initialized, cancelled): nothing to answer
+            if (msg.method === 'initialize') {
+                res.set('Mcp-Session-Id', crypto.randomBytes(16).toString('hex'));
+                const asked = msg.params?.protocolVersion;
+                return reply({ protocolVersion: MCP_VERSIONS.includes(asked) ? asked : MCP_VERSIONS[0], capabilities: { tools: {} }, serverInfo: { name: 'claudesuite', version: '1.0.0' },
+                    instructions: 'ClaudeSuite: chat met collega\'s en hun Claude. Begin met "chats" en "meedoen"; volg de afspraken die "meedoen" geeft.' });
+            }
+            if (msg.method === 'ping') return reply({});
+            if (msg.method === 'tools/list') return reply({ tools: MCP_TOOLS });
+            if (msg.method === 'tools/call') {
+                try {
+                    const text = await mcpCall(req, res, msg.params?.name, msg.params?.arguments || {});
+                    return reply({ content: [{ type: 'text', text }] });
+                } catch (error) {
+                    return reply({ content: [{ type: 'text', text: error.message }], isError: true });
+                }
+            }
+            return { jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: `Onbekend: ${msg.method}` } };
+        };
+        const batch = Array.isArray(req.body);
+        const answers = (await Promise.all((batch ? req.body : [req.body]).map(one))).filter(Boolean);
+        if (res.destroyed) return;
+        if (!answers.length) return res.status(202).end();
+        res.json(batch ? answers : answers[0]);
+    });
+    // No server-to-client stream; ending a session is fine
+    router.get('/mcp', (req, res) => res.status(405).set('Allow', 'POST').end());
+    router.delete('/mcp', guard, (req, res) => {
+        mcpSessions.delete(String(req.get('mcp-session-id') || ''));
+        res.status(200).end();
+    });
 
     return router;
 }

@@ -582,3 +582,68 @@ test('permission questions: only for a session in a chat, only its own person an
         s.close();
     }
 });
+
+test('MCP: ClaudeSuite as tools in Claude Code; each window its own session name; the listener only peeks', async () => {
+    const s = await start();
+    try {
+        const admin = s.call(await s.login('Admin', ADMIN_PASSWORD));
+        const { as: pepijn } = await invitePerson(s, admin, 'Pepijn');
+        const { as: chris } = await invitePerson(s, admin, 'Chris');
+        const { chat } = (await pepijn('POST', '/api/chats', { title: 'MCP', members: ['Chris'] })).data;
+        const key = (await pepijn('POST', '/api/me/claude-key')).data.key;
+        let id = 0;
+        const rpc = async (method, params, session) => {
+            const response = await fetch(`${s.base}/api/mcp`, { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(session ? { 'mcp-session-id': session } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }) });
+            return { status: response.status, session: response.headers.get('mcp-session-id'), body: await response.json() };
+        };
+        const tool = async (name, args, session) => (await rpc('tools/call', { name, arguments: args }, session)).body.result;
+
+        const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+        assert.equal(init.body.result.protocolVersion, '2025-06-18');
+        const session = init.session;
+        assert.ok(session);
+        // a notification gets no answer
+        const note = await fetch(`${s.base}/api/mcp`, { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', 'mcp-session-id': session }, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) });
+        assert.equal(note.status, 202);
+        assert.ok((await rpc('tools/list', {}, session)).body.result.tools.some((t) => t.name === 'schrijven'));
+        // people use the page, not the MCP server
+        assert.equal((await pepijn('POST', '/api/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status, 403);
+
+        assert.match((await tool('chats', {}, session)).content[0].text, new RegExp(`${chat.id}: MCP`));
+        assert.equal((await tool('lezen', {}, session)).isError, true, 'first meedoen');
+        const joined = (await tool('meedoen', { chat: chat.id, sessie: 'Kasper' }, session)).content[0].text;
+        assert.match(joined, /als "Claude \(Pepijn · Kasper\)"/);
+        assert.match(joined, /-H "X-Sessie: Kasper"/);
+        assert.match((await tool('schrijven', { tekst: 'Hallo @Claude-Groen' }, session)).content[0].text, /Geplaatst als #\d+\. Let op: @Claude-Groen bestaat niet/);
+        assert.equal((await chris('GET', `/api/chats/${chat.id}/messages`)).data.messages.at(-1).sender, 'Claude (Pepijn · Kasper)');
+
+        // the background listener only peeks: after it wakes, "lezen" still gives the message
+        const listener = s.claude(key)('GET', `/api/chats/${chat.id}/wait?after=laatst&peek=1&timeout=10&wake=claude&format=text`, undefined, { 'x-sessie': 'Kasper' });
+        await new Promise((r) => setTimeout(r, 100));
+        await chris('POST', `/api/chats/${chat.id}/messages`, { text: '@Claude-Pepijn kun je dit lezen?' });
+        assert.match((await listener).data, /kun je dit lezen/);
+        assert.match((await tool('lezen', {}, session)).content[0].text, /Chris: \[VOOR JOU\] @Claude-Pepijn kun je dit lezen\?/);
+        assert.match((await tool('lezen', {}, session)).content[0].text, /: 0 berichten/);
+
+        // wachten wakes on a tag
+        const waiting = tool('wachten', { seconden: 10 }, session);
+        await new Promise((r) => setTimeout(r, 100));
+        await chris('POST', `/api/chats/${chat.id}/messages`, { text: '@Claude nog iets' });
+        assert.match((await waiting).content[0].text, /Chris: \[VOOR JOU\] @Claude nog iets/);
+
+        // onderwerp.md with versions
+        const brief = (await tool('onderwerp', {}, session)).content[0].text;
+        const version = Number(brief.match(/versie (\d+)/)[1]);
+        assert.match((await tool('onderwerp_opslaan', { tekst: '# Besloten\n- MCP werkt', versie: version }, session)).content[0].text, /Opgeslagen/);
+        assert.equal((await tool('onderwerp_opslaan', { tekst: 'oud', versie: version }, session)).isError, true);
+        assert.match((await tool('status', { soort: 'denkt' }, session)).content[0].text, /nadenkt/);
+
+        // another window of the same person without a session name writes as plain "Claude (Pepijn)"
+        const other = (await rpc('initialize', { protocolVersion: '2025-06-18' })).session;
+        await tool('meedoen', { chat: chat.id }, other);
+        await tool('schrijven', { tekst: 'Ik ben het andere venster' }, other);
+        assert.equal((await chris('GET', `/api/chats/${chat.id}/messages`)).data.messages.at(-1).sender, 'Claude (Pepijn)');
+    } finally {
+        s.close();
+    }
+});

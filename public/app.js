@@ -228,6 +228,15 @@ const chatEl = h('section', { class: 'chat', 'aria-label': 'Chat' });
 const messagesEl = h('div', { class: 'messages', role: 'log', 'aria-live': 'polite', 'aria-relevant': 'additions' });
 const thinkingEl = h('div', { class: 'thinking-list' });
 const typingBar = h('div', { class: 'typing-bar', 'aria-live': 'polite' });
+// Down to the newest message: at once, and again once a new message has finished growing in (its short animation),
+// otherwise the last bit stays out of view. Only when you were at the bottom already: reading back is never disturbed.
+const nearBottom = () => messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
+function toBottom() {
+    const go = () => { messagesEl.scrollTop = messagesEl.scrollHeight; };
+    go();
+    requestAnimationFrame(go);
+    setTimeout(go, 350);
+}
 
 async function showMain(chatId) {
     stopPolling();
@@ -354,7 +363,7 @@ async function openChat(id) {
     lastMarked = 0;
     loadChats();
     markRead();
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    toBottom();
     startPolling(id);
 }
 
@@ -443,7 +452,7 @@ function drawTyping() {
     if (shown.join() !== thinkers.map((t) => t.sender).join()) {
         thinkingEl.replaceChildren(...thinkers.map((t) => h('div', { class: 'thinking', 'data-sender': t.sender, role: 'status' },
             icon('spark', 'spark'), h('span', {}, `${t.sender} denkt na`), h('span', { class: 'dots' }, h('i'), h('i'), h('i')))));
-        if (thinkers.length) messagesEl.scrollTop = messagesEl.scrollHeight;
+        if (thinkers.length && nearBottom()) toBottom();
     }
     // Hide each one at its own end time, also when nothing else arrives
     const next = Math.min(...active.map((t) => t.until));
@@ -671,14 +680,14 @@ function startPolling(id) {
                 state.typing = data.typing;
                 state.claudes = data.claudes || [];
                 drawPeople();
-                const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
+                const atBottom = nearBottom();
                 for (const m of data.messages) if (m.id > state.lastId) messagesEl.insertBefore(messageEl(m, true), thinkingEl);
                 if (data.messages.length) {
                     state.lastId = Math.max(state.lastId, ...data.messages.map((m) => m.id));
                     markRead();
                 }
                 drawTyping();
-                if (atBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                if (atBottom) toBottom();
                 // someone changed the members or the archive: refresh the head
                 if (data.messages.some((m) => m.isEvent)) {
                     const fresh = await api(`/api/chats/${id}`);
@@ -1036,6 +1045,13 @@ function setupCommand(key) {
         '$old = [regex]::Replace($old, \'(?s)\\s*<!-- claudesuite:start -->.*?<!-- claudesuite:end -->\\s*\', [Environment]::NewLine)',
         '[IO.File]::WriteAllText($f, ($old.Trim() + [Environment]::NewLine + [Environment]::NewLine + $new.Trim() + [Environment]::NewLine).TrimStart(), (New-Object Text.UTF8Encoding $false))',
         '"ClaudeSuite staat nu in $f" } catch { "CLAUDE.md is NIET bijgewerkt: $_" } }',
+        // The ClaudeSuite tools in Claude Code (MCP server on the NAS), for every project of this person (-s user).
+        // The key goes into Claude Code's own settings (~/.claude.json), the same as the environment variable.
+        `& { try { $ErrorActionPreference = 'Stop'; if (-not $k) { throw 'geen Claude-sleutel' }; if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { throw 'het commando claude is in dit venster niet bekend' }; Invoke-RestMethod -Headers @{ Authorization = "Bearer $k" } "${location.origin}/api/whoami" | Out-Null`,
+        // an old entry goes first (none there yet is fine); messages of claude itself must not stop the command
+        '$ErrorActionPreference = \'Continue\'; claude mcp remove claudesuite -s user 2>&1 | Out-Null',
+        `$uit = claude mcp add --transport http -s user claudesuite "${location.origin}/api/mcp" --header "Authorization: Bearer $k" 2>&1 | Out-String; if ($LASTEXITCODE) { throw "claude mcp add lukte niet: $uit" }`,
+        '"ClaudeSuite-tools staan nu in Claude Code (MCP)." } catch { "ClaudeSuite-tools (MCP) zijn NIET ingesteld: $_" } }',
         // The permission hook: questions of a session that takes part in a chat are answered in the app.
         // settings.json is backed up first (settings.json.bak); on any problem it stays as it was.
         `& { try { $ErrorActionPreference = 'Stop'; if (-not $k) { throw 'geen Claude-sleutel' }; $hook = "$HOME\\.claude\\claudesuite-toestemming.ps1"; Invoke-RestMethod -Headers @{ Authorization = "Bearer $k" } "${location.origin}/api/claude-hook.ps1" -OutFile $hook`,

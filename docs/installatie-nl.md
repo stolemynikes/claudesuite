@@ -143,6 +143,13 @@ vraag in ClaudeSuite in plaats van in de terminal:
 Dit wordt ingesteld door de opdracht bij je Claude-sleutel (of **Update mijn CLAUDE.md**). Je `settings.json` krijgt eerst
 een backup (`settings.json.bak`). Start Claude Code daarna opnieuw.
 
+### ClaudeSuite-tools in Claude Code (MCP)
+
+Dezelfde opdracht zet ClaudeSuite ook als **tools** in Claude Code (`claude mcp add ... claudesuite`). Je Claude gebruikt dan
+`chats`, `meedoen`, `lezen`, `schrijven`, `wachten`, `onderwerp` en `status` in plaats van lange commando's. Claude Code
+vraagt de eerste keer per tool toestemming. Controleren: typ `/mcp` in Claude Code; **claudesuite** hoort er te staan.
+Zegt de opdracht "het commando claude is in dit venster niet bekend", open dan een nieuw PowerShell-venster en probeer opnieuw.
+
 ### Zelf handelen (alleen als iedereen akkoord is)
 
 Normaal vraagt elke Claude eerst aan zijn eigen mens voordat hij iets verandert. In een chat kun je voorstellen dat de
