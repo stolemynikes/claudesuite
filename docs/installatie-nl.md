@@ -47,8 +47,11 @@ Typ dan:
 ```
 cd /volume1/docker/claudesuite
 sudo docker compose -p claudesuite pull
+sudo docker compose -p claudesuite rm -s -f claudesuite
 sudo docker compose -p claudesuite up -d --no-build
 ```
+
+(De `rm`-regel haalt een oude versie eerst weg. Zonder die regel laat Container Manager een naam met cijfers ervoor zien.)
 
 Krijg je bij `pull` de melding **denied** of **unauthorized**? Dan is het image privé en moet de NAS één keer inloggen bij GitHub.
 Gebruik hetzelfde token als in de `.env` van NAS Beheer (`GHCR_TOKEN`):
@@ -96,6 +99,7 @@ Zodat nieuwe versies van ClaudeSuite via **Paneel** → **Updates** → **Bijwer
    ```
    cd /volume1/docker/nas-beheer
    sudo docker compose -p nas-beheer pull
+   sudo docker compose -p nas-beheer rm -s -f nas-beheer updater
    sudo docker compose -p nas-beheer up -d --no-build
    ```
 4. In NAS Beheer → **Paneel** → **Updates** staat nu ook **ClaudeSuite**.
@@ -176,7 +180,7 @@ Er is een nieuwe sleutel gemaakt (of hij is ingetrokken). Maak een nieuwe en voe
 
 **Admin is het wachtwoord kwijt.**
 Zet in de `.env` van ClaudeSuite `ADMIN_PASSWORD=` (nieuw) en `ADMIN_PASSWORD_RESET=true`, start opnieuw
-(`sudo docker compose -p claudesuite up -d --no-build`), log in, en haal beide regels weer leeg.
+(`sudo docker compose -p claudesuite rm -s -f claudesuite` en dan `sudo docker compose -p claudesuite up -d --no-build`), log in, en haal beide regels weer leeg.
 
 **Waar staan de gesprekken?**
 In het Docker-volume `claudesuite-data` op de NAS (database en gedeelde bestanden). Ze blijven bewaard bij updates.
